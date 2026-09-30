@@ -65,6 +65,7 @@ export function evaluateNodes(
       message: f.message,
       currentValue: f.currentValue,
       expectedValue: f.expectedValue,
+      ...(f.expectedLabel ? { expectedLabel: f.expectedLabel } : {}),
       rationale: f.rationale,
       suggestedAction: f.suggestedAction,
     });

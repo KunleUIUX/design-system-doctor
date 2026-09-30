@@ -92,6 +92,12 @@ separate severity that is **never scored and never counted as a pass**:
 
 * a layer is bound to a variable Figma can't load here;
 * text uses a style Figma can't load here;
+* unstyled text doesn't exactly match any readable approved style, while one or more
+  individually approved text styles can't be read here. Their values are unknown, so one of them
+  might be the match. The finding names that style when exactly one is unavailable. Readable
+  styles still decide everything they can: an applied style, or an exact match with a readable
+  approved style, is reported normally. Whole-source approvals ("all library text styles") aren't
+  affected, because Figma doesn't list library styles a file hasn't used;
 * an instance's main component can't be read;
 * a raw colour, when an approved collection can't be read in this file (Doctor can't tell
   whether the colour should have been one of its tokens).

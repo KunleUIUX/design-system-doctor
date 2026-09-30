@@ -10,7 +10,7 @@ import {
   type AssetRef,
 } from '../src/shared/designSystem';
 import type { DesignSystemData } from '../src/shared/types';
-import { auditConfig, colorVar, data, dsConfig, hex, node, solid } from './fixtures';
+import { BODY_MEDIUM, auditConfig, colorVar, data, dsConfig, hex, node, segment, solid } from './fixtures';
 
 // The same published library ("Acme Colors", key 5cf0ef50) as seen from two consuming files.
 // Figma gives it a different, file-specific id in each (observed in the Phase 4 real-file check).
@@ -94,6 +94,20 @@ describe('not verifiable', () => {
   it('still reports a real match against the tokens it can read', () => {
     const r = evaluateNodes([node({ fills: [solid('#635BFF')] })], data(), auditConfig({ variableCollections: [{ source: 'library', key: 'ck', name: 'Acme tokens' }, unusedLibrary] }));
     expect(r.issues.map((i) => i.ruleId)).toEqual(['color/raw-matches-token']);
+  });
+
+  it('leaves unavailable typography out of the score: not a pass, warning or issue', () => {
+    const caption: AssetRef = { source: 'library', key: 'k-caption', name: 'Caption' };
+    const body: AssetRef = { source: 'library', key: 'k-body', name: 'Body / Medium' };
+    const cfg = auditConfig({ textStyles: { library: false, local: false, items: [body, caption] } });
+    const styled = node({ type: 'TEXT', text: [segment({ textStyleId: BODY_MEDIUM.id })] });
+    const unstyled = node({ type: 'TEXT', name: 'Footnote', text: [segment({ fontSize: 12 })] });
+    const r = evaluateNodes([styled, unstyled], data(), cfg);
+    expect(r.issues).toEqual([
+      expect.objectContaining({ ruleId: 'typography/not-verifiable', ruleName: 'Text style unavailable', severity: 'unverifiable', nodeName: 'Footnote', expectedLabel: 'Approved style', expectedValue: 'Caption' }),
+    ]);
+    expect(r.compliance).toMatchObject({ opportunities: 1, passed: 1, warned: 0, errored: 0, score: 100 });
+    expect(r.unresolvedSources).toEqual([caption]);
   });
 
   it('reports bound variables and instances Figma can’t read', () => {

@@ -13,6 +13,8 @@ export interface Finding {
   message: string;
   currentValue: string;
   expectedValue: string;
+  /** Replaces the "Expected" label when that would be misleading (e.g. "Approved style" for a source that can't be read). The current value isn't shown then. */
+  expectedLabel?: string;
   rationale: string;
   suggestedAction: string;
 }

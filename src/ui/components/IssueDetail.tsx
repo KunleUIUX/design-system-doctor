@@ -54,13 +54,24 @@ export function IssueDetail({ result, category, issueId, navStatus, freshness, o
           <dd><code>{issue.nodeId}</code></dd>
           <dt>Property</dt>
           <dd>{issue.property}{issue.affects && <><br /><Affects affects={issue.affects} /></>}</dd>
-          <dt>Current</dt>
-          <dd><code>{issue.currentValue}</code></dd>
-          <dt>Expected</dt>
-          <dd><code>{issue.expectedValue}</code></dd>
+          {issue.expectedLabel ? (
+            <>
+              <dt>Layer</dt>
+              <dd>{issue.nodeName}</dd>
+              <dt>{issue.expectedLabel}</dt>
+              <dd><code>{issue.expectedValue}</code></dd>
+            </>
+          ) : (
+            <>
+              <dt>Current</dt>
+              <dd><code>{issue.currentValue}</code></dd>
+              <dt>Expected</dt>
+              <dd><code>{issue.expectedValue}</code></dd>
+            </>
+          )}
         </dl>
 
-        <h3 class="section-title">Why this matters</h3>
+        <h3 class="section-title">{issue.severity === 'unverifiable' ? 'Why it can’t be checked' : 'Why this matters'}</h3>
         <p>{issue.rationale}</p>
         <h3 class="section-title">How to fix</h3>
         <p>{issue.suggestedAction}</p>

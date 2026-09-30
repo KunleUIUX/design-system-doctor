@@ -57,15 +57,27 @@ function FindingCard({ issue: i, navStatus, onOpen, onGoToLayer }: { issue: Audi
           <span class={`severity-label ${i.severity}`}>{SEVERITY_LABEL[i.severity]}</span>
           <span class="finding-rule">{i.ruleName}</span>
         </span>
-        <span class="finding-layer">
-          {i.nodeName} <span class="muted">· {i.property}</span>
-        </span>
-        <Affects affects={i.affects} />
-        <span class="finding-values">
-          <span class="muted">Current</span> <code>{i.currentValue}</code>
-          <span class="muted">Expected</span> <code>{i.expectedValue}</code>
-        </span>
-        <span class="finding-why">{i.rationale}</span>
+        {i.expectedLabel ? (
+          <>
+            <span class="finding-values">
+              <span class="muted">Layer</span> <span>{i.nodeName}</span>
+              <span class="muted">{i.expectedLabel}</span> <code>{i.expectedValue}</code>
+            </span>
+            <span class="finding-why"><span class="finding-why-label">Why it can’t be checked</span>{i.rationale}</span>
+          </>
+        ) : (
+          <>
+            <span class="finding-layer">
+              {i.nodeName} <span class="muted">· {i.property}</span>
+            </span>
+            <Affects affects={i.affects} />
+            <span class="finding-values">
+              <span class="muted">Current</span> <code>{i.currentValue}</code>
+              <span class="muted">Expected</span> <code>{i.expectedValue}</code>
+            </span>
+            <span class="finding-why">{i.rationale}</span>
+          </>
+        )}
       </button>
       <div class="finding-actions">
         <button class="btn secondary small-btn" onClick={onGoToLayer}>Go to layer</button>

@@ -125,6 +125,16 @@ export class DesignSystemResolver {
     return this.approvedTextStyles.length > 0;
   }
 
+  /**
+   * Individually approved text styles this file can't read (usually a library style the file
+   * hasn't used yet). Their values are unknown, so unstyled text can't be ruled out against them.
+   * Whole-source approvals ("all library text styles") can't be listed here: Figma only exposes
+   * library styles once a file uses them.
+   */
+  unresolvedTextStyles(): AssetRef[] {
+    return this.config.textStyles.items.filter((r) => !this.data.textStyles.some((s) => matchesRef(r, s)));
+  }
+
   /** Approved text styles whose font, size, line-height and letter-spacing all equal `props`. */
   findTextStylesMatching(props: TextProps): TextStyleInfo[] {
     return this.approvedTextStyles.filter((s) => textPropsEqual(s, props));

@@ -86,6 +86,75 @@ describe('typography', () => {
     expect(check.finding).toMatchObject({ code: 'not-verifiable', severity: 'unverifiable' });
   });
 
+  describe('when some individually approved styles can’t be read in this file', () => {
+    // BODY_MEDIUM (k-body) and HEADING (k-heading) are readable in data(); "Caption" and "Overline" aren't.
+    const lib = (key: string, name: string) => ({ source: 'library' as const, key, name });
+    const BODY = lib('k-body', 'Body / Medium');
+    const HEAD = lib('k-heading', 'Heading / L');
+    const CAPTION = lib('k-caption', 'Caption');
+    const OVERLINE = lib('k-overline', 'Overline');
+    const picked = (...items: ReturnType<typeof lib>[]) =>
+      ctx(data(), auditConfig({ textStyles: { library: false, local: false, items } }));
+    const text = (seg = segment()) => node({ type: 'TEXT', text: [seg] });
+
+    it('1. all approved styles readable: normal comparison', () => {
+      const c = picked(BODY, HEAD);
+      expect(c.resolver.unresolvedTextStyles()).toEqual([]);
+      expect(codes(run(typographyRule, text(), c))).toEqual(['local-matches-style']);
+      expect(run(typographyRule, text(segment({ fontSize: 17 })), c)[0].finding).toMatchObject({ code: 'no-style', severity: 'warning' });
+    });
+
+    it('2. an unavailable style that can’t change the result leaves it as is', () => {
+      const c = picked(BODY, CAPTION);
+      // Applied readable styles decide on their own, approved or not.
+      expect(codes(run(typographyRule, text(segment({ textStyleId: BODY_MEDIUM.id })), c))).toEqual(['pass']);
+      expect(codes(run(typographyRule, text(segment({ textStyleId: HEADING.id })), c))).toEqual(['unapproved-style']);
+      // An exact match with a readable approved style is certain regardless of Caption.
+      expect(run(typographyRule, text(), c)[0].finding).toMatchObject({ code: 'local-matches-style', severity: 'error', expectedValue: 'Body / Medium' });
+    });
+
+    it('3. unstyled text an unavailable style could match is not verifiable, naming that style', () => {
+      const [check] = run(typographyRule, text(segment({ fontSize: 12, lineHeight: { unit: 'PIXELS', value: 16 } })), picked(BODY, CAPTION));
+      expect(check.finding).toMatchObject({
+        code: 'not-verifiable',
+        severity: 'unverifiable',
+        message: 'Text style unavailable',
+        expectedLabel: 'Approved style',
+        expectedValue: 'Caption',
+      });
+      expect(check.finding?.rationale).toContain('“Caption” isn’t available in this file');
+    });
+
+    it('3. with several unavailable styles it doesn’t guess which one applies', () => {
+      const [check] = run(typographyRule, text(segment({ fontSize: 12 })), picked(BODY, CAPTION, OVERLINE));
+      expect(check.finding).toMatchObject({ severity: 'unverifiable', expectedValue: 'One or more approved typography sources aren’t available in this file.' });
+      expect(check.finding?.rationale).not.toMatch(/Caption|Overline/);
+    });
+
+    it('3. when no approved style is readable, unstyled text is not verifiable instead of silently skipped', () => {
+      expect(run(typographyRule, text(), picked(CAPTION))[0].finding).toMatchObject({ severity: 'unverifiable', expectedValue: 'Caption' });
+    });
+
+    it('3. an applied style Figma can’t read uses the unavailable-style wording and names nothing it can’t know', () => {
+      const [check] = run(typographyRule, text(segment({ textStyleId: 'S:missing' })), picked(BODY, CAPTION));
+      expect(check.finding).toMatchObject({
+        severity: 'unverifiable',
+        message: 'Text style unavailable',
+        expectedLabel: 'Approved style',
+        expectedValue: 'One or more approved typography sources aren’t available in this file.',
+        rationale:
+          'This text uses a library style that Figma hasn’t made available in this file, so Design System Doctor can’t fully compare it against the approved typography sources.',
+      });
+    });
+
+    it('4. a genuine one-off stays a warning when every approved style could be compared', () => {
+      const oneOff = text(segment({ fontStyle: 'Italic', fontSize: 11, lineHeight: { unit: 'PIXELS', value: 14 } }));
+      expect(run(typographyRule, oneOff, picked(BODY, HEAD))[0].finding).toMatchObject({ code: 'no-style', severity: 'warning', expectedValue: 'An approved text style' });
+      // "All library text styles" has nothing individually unavailable, so it keeps the warning too.
+      expect(run(typographyRule, oneOff)[0].finding).toMatchObject({ code: 'no-style', severity: 'warning' });
+    });
+  });
+
   it('does not judge unstyled text when the design system has no approved text styles', () => {
     const c = ctx(data(), auditConfig({ textStyles: { library: false, local: false, items: [] } }));
     expect(run(typographyRule, node({ type: 'TEXT', text: [segment()] }), c)).toEqual([]);

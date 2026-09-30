@@ -22,15 +22,38 @@ function expectedFor(props: TextProps, resolver: DesignSystemResolver): string {
   return nearest ? `An approved text style (closest: ${nearest.name})` : 'An approved text style';
 }
 
+const SOURCES_UNAVAILABLE = 'One or more approved typography sources aren’t available in this file.';
+
+/**
+ * Not verifiable because approved typography can't be read here. Names the approved style only
+ * when exactly one is unavailable; otherwise it doesn't guess which one applies.
+ */
+function styleUnavailable(currentValue: string, approved: string, rationale: string): Finding {
+  return {
+    ...notVerifiable(
+      currentValue,
+      rationale,
+      'Make sure the library is enabled and its styles are used in this file, then re-run the audit. Until then, check this text by hand.',
+    ),
+    message: 'Text style unavailable',
+    expectedLabel: 'Approved style',
+    expectedValue: approved,
+  };
+}
+
 function checkSegment(seg: TextSegmentSnapshot, resolver: DesignSystemResolver): Finding | undefined | null {
+  const unavailable = resolver.unresolvedTextStyles();
+
   if (seg.textStyleId) {
     const style = resolver.getTextStyle(seg.textStyleId);
     if (!style)
-      return notVerifiable(
+      return styleUnavailable(
         'Text style can’t be read',
-        'This text uses a style Figma couldn’t load here, usually because its library isn’t available to this file.',
-        'Check the library is enabled for this file, then re-run the audit.',
+        // The applied style is unreadable, so which approved style (if any) it is can't be known.
+        unavailable.length > 0 ? SOURCES_UNAVAILABLE : 'The applied text style can’t be identified in this file.',
+        'This text uses a library style that Figma hasn’t made available in this file, so Design System Doctor can’t fully compare it against the approved typography sources.',
       );
+    // A readable style decides this on its own; unavailable approved styles can't change the result.
     if (resolver.isTextStyleApproved(style.id)) return undefined;
     return {
       code: 'unapproved-style',
@@ -43,8 +66,7 @@ function checkSegment(seg: TextSegmentSnapshot, resolver: DesignSystemResolver):
     };
   }
 
-  if (!resolver.hasApprovedTextStyles()) return null; // Nothing to compare against.
-
+  // An exact match with a readable approved style is certain whatever the unavailable ones are.
   const matches = resolver.findTextStylesMatching(seg);
   if (matches.length > 0) {
     return {
@@ -60,6 +82,21 @@ function checkSegment(seg: TextSegmentSnapshot, resolver: DesignSystemResolver):
       suggestedAction: 'Apply the matching text style.',
     };
   }
+
+  // No readable approved style matches, but an unavailable one might: a "no style" warning (or
+  // silently skipping when none are readable) would claim a comparison that wasn't possible.
+  if (unavailable.length > 0) {
+    const one = unavailable.length === 1 ? unavailable[0] : null;
+    return styleUnavailable(
+      `No style · ${describeTextProps(seg)}`,
+      one ? one.name : SOURCES_UNAVAILABLE,
+      one
+        ? `This text has no text style, and the approved style “${one.name}” isn’t available in this file, so Design System Doctor can’t tell whether this text should use it.`
+        : `This text has no text style, and ${unavailable.length} approved text styles aren’t available in this file, so Design System Doctor can’t fully compare it against the approved typography sources.`,
+    );
+  }
+
+  if (!resolver.hasApprovedTextStyles()) return null; // Nothing to compare against.
 
   const nearest = resolver.findCloseTextStyle(seg);
   return {
@@ -87,7 +124,7 @@ export const typographyRule: AuditRule = {
     'unapproved-style': 'Text style not in design system',
     'local-matches-style': 'Local styling matches an approved style',
     'no-style': 'Text has no text style',
-    'not-verifiable': 'Text style not verifiable in this file',
+    'not-verifiable': 'Text style unavailable',
   },
   appliesTo: (node) => !!node.text?.length && isOwnValue(node, TEXT_FIELDS),
   evaluate(node, { resolver }) {

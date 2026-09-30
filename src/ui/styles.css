@@ -174,6 +174,7 @@ fieldset.source legend { font-weight: 500; padding: 0 4px; }
 .finding-values { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; font-size: 11px; margin: 2px 0; }
 .finding-values code { justify-self: start; }
 .finding-why { color: var(--text-secondary); font-size: 11px; }
+.finding-why-label { display: block; color: var(--text); font-weight: 600; margin: 2px 0 1px; }
 .finding-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .small-btn { height: 28px; font-size: 11px; }
 .node-id { color: var(--text-secondary); background: none; padding: 0; }

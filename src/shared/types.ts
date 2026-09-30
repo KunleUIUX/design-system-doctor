@@ -243,6 +243,8 @@ export interface AuditIssue {
   message: string;
   currentValue: string;
   expectedValue: string;
+  /** Label for `expectedValue` when "Expected" would be misleading; the current value is then not shown. */
+  expectedLabel?: string;
   rationale: string;
   suggestedAction: string;
 }
