@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+dev/harness.js
+dev/figma-e2e.js
+dev/e2e/*.generated.js
+.claude/settings.local.json

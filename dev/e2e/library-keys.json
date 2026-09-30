@@ -1,0 +1,16 @@
+{
+  "libraryFile": "6QJ512wCGidg6x3Q2Za89d",
+  "consumerFile": "WXrY8QCO9AMEFL2AZqWW6v",
+  "variables": {
+    "color/brand/primary": "f0cea0bc717049b9215fc4c503dac90559c8d579",
+    "color/text/primary": "c87f0bbeb6c21455c84e66ca85eb4e584ac73efd",
+    "color/surface/default": "f71662b55093d416837e9fead100ec862da8dd58",
+    "color/text/on-brand": "f8e8930f834714885c7335b4e7f646da2b39e461",
+    "space/12": "e82eccca02877e41ce1c6f48ab2b6196ee8cf2d8",
+    "space/16": "3dd509954506ceacf2d455159b94af9685c85b7a",
+    "space/24": "cf9e288c1520abd10e1f0954987109695ca9a066"
+  },
+  "collections": { "Acme Colors": "5cf0ef50ff4b4fa46fb026dd0b0b3c857a2ebdb2", "Acme Spacing": "e2cb7862ed001f685edca2b427155603a9fa6a0b" },
+  "styles": { "Acme / Body": "89001002361e7522ad693673283d5061204acb43", "Acme / Button label": "46db04649156f45b2c6aa789b0ddc9a27c01f973" },
+  "components": { "Acme / Button": "3ab72fbe2d5efade7745efe3c265e6fdd9024203" }
+}
