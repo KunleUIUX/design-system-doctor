@@ -202,7 +202,7 @@ Typed in `src/shared/messages.ts`. UI → main: `init`, `run-audit`, `cancel-aud
 
 ## 9. Remote (library) assets and asset identity — validated 2026-09-30
 
-Validated against a real published library (`DSD Test Library`, team "kunle's Design") consumed by
+Validated against a real published library (`DSD Test Library`) consumed by
 two separate files, `DSD Library Consumer` and `DSD Library Consumer 2`, through the real
 controller (`dev/e2e/library.js`, `config-consumer1.js`, `config-consumer2.js`; keys in
 `dev/e2e/library-keys.json`). Remote colour and spacing variables, remote text styles, a remote

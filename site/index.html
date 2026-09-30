@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Design System Doctor</title>
+  <meta name="description" content="Design System Doctor is a Figma plugin that audits typography, colour, components, spacing and corner radius against your design system, then takes you to the layer that needs attention.">
+  <meta property="og:title" content="Design System Doctor">
+  <meta property="og:description" content="Your design system. Audited inside Figma.">
+  <meta name="theme-color" content="#f6f6f3">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c8ce9'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11.5' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+  <header class="nav">
+    <div class="grid nav-inner">
+      <a class="wordmark" href="#top">Design System Doctor</a>
+      <nav aria-label="Sections">
+        <a href="#workflow">Workflow</a>
+        <a href="#product">Product</a>
+        <a href="#rayna">Validation</a>
+        <a href="#checks">Checks</a>
+        <a class="nav-cta" href="https://github.com/KunleUIUX/design-system-doctor">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- 1. Hero -->
+    <section class="hero">
+      <div class="grid">
+        <p class="label reveal">Figma plugin · Design system audit</p>
+        <h1 class="display reveal">Your design system.<br>Audited inside Figma.</h1>
+        <div class="hero-foot reveal">
+          <p class="lead">Design System Doctor finds inconsistencies across typography, colour, components, spacing and radius, then takes you directly to the layer that needs attention.</p>
+          <div class="links">
+            <a class="button" href="https://github.com/KunleUIUX/design-system-doctor">View on GitHub</a>
+            <a class="text-link" href="#workflow">How it works <span aria-hidden="true">↓</span></a>
+          </div>
+        </div>
+      </div>
+      <div class="stage hero-stage reveal">
+        <img class="shot side left" src="images/findings-typography.png" width="379" height="660" alt="" aria-hidden="true">
+        <img class="shot main" src="images/audit-overview.png" width="380" height="660" alt="Example audit from a validated Rayna UI test run in Figma: 81% design system compliance across 118 applicable checks, with 19 spacing issues and 6 typography warnings.">
+        <img class="shot side right" src="images/findings-spacing.png" width="379" height="660" alt="" aria-hidden="true">
+      </div>
+      <div class="grid"><p class="stage-note">Example audit from a validated Rayna UI test run. Real screenshots of the plugin in Figma.</p></div>
+    </section>
+
+    <!-- 2. Problem -->
+    <section class="section">
+      <div class="grid">
+        <p class="label reveal">The problem</p>
+        <h2 class="statement reveal">Small inconsistencies become expensive at scale.</h2>
+        <p class="body-copy reveal">A hard-coded value here, a detached component there. Each one is easy to miss by eye. Across a product they add up to drift, handoff questions and a design system people stop trusting. The plugin reports these as specific fixes.</p>
+      </div>
+      <div class="grid">
+        <ol class="fixes">
+          <li class="reveal"><span class="fix-cat">Spacing</span><span class="fix-from">66px</span><span class="arrow" aria-label="becomes">→</span><span class="fix-to">64px</span></li>
+          <li class="reveal"><span class="fix-cat">Typography</span><span class="fix-from">Local style</span><span class="arrow" aria-label="becomes">→</span><span class="fix-to">Approved style</span></li>
+          <li class="reveal"><span class="fix-cat">Components</span><span class="fix-from">Unapproved component</span><span class="arrow" aria-label="becomes">→</span><span class="fix-to">Library component</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- 3. Workflow -->
+    <section id="workflow" class="section workflow">
+      <div class="grid">
+        <p class="label reveal">Workflow</p>
+        <ol class="steps">
+          <li class="step"><span class="step-n">01</span><span class="step-word">Configure</span><p>Choose the approved variable collections, text styles, colour styles, components and scales. Settings are saved in the file.</p></li>
+          <li class="step"><span class="step-n">02</span><span class="step-word">Audit</span><p>Run on the current page or a selection. The audit is read-only.</p></li>
+          <li class="step"><span class="step-n">03</span><span class="step-word">Find</span><p>Findings are grouped by category and severity, each with its current and expected value.</p></li>
+          <li class="step"><span class="step-n">04</span><span class="step-word">Navigate</span><p>Go to layer selects and zooms to the exact layer, switching pages if needed.</p></li>
+          <li class="step"><span class="step-n">05</span><span class="step-word">Fix</span><p>Fix it in Figma as you normally would. The plugin never edits your design.</p></li>
+          <li class="step"><span class="step-n">06</span><span class="step-word">Re-audit</span><p>Run it again to see what was resolved. Results are marked out of date when the design changes.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- 4. Product showcase -->
+    <section id="product" class="section product">
+      <div class="grid">
+        <p class="label reveal">The product</p>
+        <h2 class="statement reveal">Every finding explains itself.</h2>
+      </div>
+
+      <figure class="feature grid">
+        <div class="stage feature-stage reveal"><img class="shot" src="images/audit-overview.png" width="380" height="660" loading="lazy" alt="Example audit from a validated Rayna UI test run: 81% compliance, 80 layers scanned, 93 passed, 6 warnings, 19 issues, grouped into Typography and Spacing."></div>
+        <figcaption class="feature-cap reveal"><span class="cap-n">Audit overview</span>A compliance score across every applicable check, the counts behind it, and findings grouped by category. How the score is calculated is one tap away.<span class="cap-note">Example audit from a validated Rayna UI test run.</span></figcaption>
+      </figure>
+
+      <figure class="feature grid flip">
+        <div class="stage feature-stage reveal"><img class="shot" src="images/findings-spacing.png" width="379" height="660" loading="lazy" alt="Spacing findings: a 74px gap where the scale expects 64px, and 10px top and bottom padding where 8px or 12px is expected, reported as one fix."></div>
+        <figcaption class="feature-cap reveal"><span class="cap-n">Spacing finding</span>Off-scale gaps and padding show the current value, the nearest values on your scale, and the scale itself. Sides that share a value are reported as one fix.</figcaption>
+      </figure>
+
+      <figure class="feature grid">
+        <div class="stage feature-stage reveal"><img class="shot" src="images/findings-typography.png" width="379" height="660" loading="lazy" alt="Typography findings: text with no text style, showing its current font settings, the expected approved style, an explanation and a Go to layer button."></div>
+        <figcaption class="feature-cap reveal"><span class="cap-n">Go to layer</span>Every finding has a Go to layer button that selects the exact layer and brings it into view, so a list of problems becomes a list of places to go.</figcaption>
+      </figure>
+
+      <figure class="feature grid flip">
+        <div class="stage feature-stage reveal"><img class="shot" src="images/reaudit-current.png" width="380" height="660" loading="lazy" alt="Home screen after re-running the audit: the last audit is marked as matching the current design."></div>
+        <figcaption class="feature-cap reveal"><span class="cap-n">Re-audit</span>After a re-run, the last audit is checked against the design and marked “Matches the current design”. Edit the page and it tells you the results are out of date.</figcaption>
+      </figure>
+    </section>
+
+    <!-- 5. Rayna UI -->
+    <section id="rayna" class="section rayna">
+      <div class="grid rayna-grid">
+        <div class="rayna-text">
+          <p class="label reveal">Validation</p>
+          <h2 class="statement reveal">Validated with Rayna UI.</h2>
+          <p class="body-copy reveal">I tested the plugin by hand in Figma against Rayna UI, an external design system, on a real design built with its elements. This was a manual test, separate from the repository's automated tests.</p>
+          <ul class="results">
+            <li class="reveal">Real spacing violations were detected, and I checked each one by hand.</li>
+            <li class="reveal">Go to layer selected the correct layer.</li>
+            <li class="reveal">A <strong>66px</strong> gap was fixed to <strong>64px</strong>.</li>
+            <li class="reveal">The re-audit reported <strong>“1 finding resolved since the last audit.”</strong></li>
+            <li class="reveal">Rayna library components were recognised once library components were approved in the configuration.</li>
+          </ul>
+          <p class="rayna-note reveal">The screenshots on this page come from individual manual validation runs in Figma. Results, including the compliance score, depend on each file's configuration and which library sources are available in it. For example, library text styles that can't be read in a file are reported as “Not verifiable” and left out of the score, so the same design can score differently from one run to the next.</p>
+        </div>
+        <figure class="rayna-shot reveal">
+          <img class="shot" src="images/rayna-home.png" width="380" height="660" loading="lazy" alt="Plugin home screen with Rayna UI configured as the design system, showing the last audit and a notice that the design has changed since.">
+          <figcaption>Rayna UI configured as the design system, from one manual validation run.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- 6. What it checks -->
+    <section id="checks" class="section">
+      <div class="grid">
+        <p class="label reveal">What it checks</p>
+        <h2 class="statement reveal">Five categories. Explicit rules.</h2>
+      </div>
+      <div class="grid">
+        <dl class="checks">
+          <div class="check reveal"><dt>Typography</dt><dd>Text styles outside the design system. Unstyled text that exactly matches an approved style. Text with no style.</dd></div>
+          <div class="check reveal"><dt>Colours</dt><dd>Raw colours equal to an approved variable, and near misses. Variables and colour styles outside the system. Unrelated colours are flagged for review, not scored.</dd></div>
+          <div class="check reveal"><dt>Components</dt><dd>Detached instances. Instances of components that aren't approved. Possible duplicate components.</dd></div>
+          <div class="check reveal"><dt>Spacing</dt><dd>Auto-layout gaps and padding off the spacing scale, or bound to variables outside the system.</dd></div>
+          <div class="check reveal"><dt>Corner radius</dt><dd>Radii outside the approved set. Fully rounded shapes count as the “full” value.</dd></div>
+        </dl>
+      </div>
+      <div class="grid"><p class="footnote reveal">Errors score 0, warnings 0.5 and passes 1. Checks that can't be verified in a file are listed but never counted as passes.</p></div>
+    </section>
+
+    <!-- 7. AI-assisted development -->
+    <section class="section ai">
+      <div class="grid ai-grid">
+        <p class="label reveal">How it was built</p>
+        <h2 class="subhead reveal">Built with AI-assisted development.</h2>
+        <div class="ai-copy reveal">
+          <p>The plugin was planned, implemented, tested and documented with Claude Code as an AI coding assistant. I set the requirements, reviewed every phase and tested the plugin in Figma.</p>
+          <p>The audit engine itself uses no AI. Every finding comes from deterministic rules, so the same design and settings always give the same result, and every result can be explained.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. CTA -->
+    <section class="section cta">
+      <div class="grid">
+        <h2 class="display cta-title reveal">Make your design system easier to follow.</h2>
+        <div class="links reveal">
+          <a class="button" href="https://github.com/KunleUIUX/design-system-doctor">View on GitHub</a>
+          <a class="text-link" href="https://github.com/KunleUIUX/design-system-doctor/blob/main/docs/CONFIGURATION.md">Configuration guide</a>
+          <a class="text-link" href="https://github.com/KunleUIUX/design-system-doctor/blob/main/docs/ARCHITECTURE.md">Architecture</a>
+        </div>
+        <p class="install reveal">Runs in Figma Desktop. To try it, clone the repository, run <code>npm install</code> and <code>npm run build</code>, then choose Plugins → Development → Import plugin from manifest.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="grid footer-inner">
+      <span>Design System Doctor</span>
+      <span>A Figma plugin. This page presents it; the product runs inside Figma.</span>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!('IntersectionObserver' in window) || reduce) {
+        document.documentElement.classList.remove('js');
+        return;
+      }
+      var reveal = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add('in'); reveal.unobserve(e.target); }
+        });
+      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+      document.querySelectorAll('.reveal').forEach(function (el) { reveal.observe(el); });
+
+      // Workflow: only the step closest to the middle of the viewport is emphasised.
+      var steps = [].slice.call(document.querySelectorAll('.step'));
+      var nav = document.querySelector('.nav'), dark = document.querySelector('#rayna');
+      var ticking = false;
+      function update() {
+        ticking = false;
+        var mid = window.innerHeight / 2, best = null, bestD = Infinity;
+        steps.forEach(function (s) {
+          var r = s.getBoundingClientRect(), d = Math.abs(r.top + r.height / 2 - mid);
+          if (d < bestD) { bestD = d; best = s; }
+        });
+        steps.forEach(function (s) { s.classList.toggle('active', s === best && bestD < window.innerHeight / 2); });
+        var dr = dark.getBoundingClientRect();
+        nav.classList.toggle('on-dark', dr.top <= 52 && dr.bottom > 26);
+      }
+      window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+      window.addEventListener('resize', update);
+      update();
+    })();
+  </script>
+</body>
+</html>

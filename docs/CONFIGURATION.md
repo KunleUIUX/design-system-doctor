@@ -139,7 +139,7 @@ audit isn't persisted either. The portable copy is still updated, since that liv
 
 ## 8. Verified behaviour (2026-09-30)
 
-Library `DSD Test Library` (team "kunle's Design"), consumed by `DSD Library Consumer`
+Library `DSD Test Library`, consumed by `DSD Library Consumer`
 (Consumer 1) and `DSD Library Consumer 2`. Scenarios: `dev/e2e/config-consumer1.js`,
 `config-consumer2.js`, `library.js`, `config-large.js`.
 
