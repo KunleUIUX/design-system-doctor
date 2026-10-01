@@ -1,6 +1,7 @@
 import { CATEGORY_LABELS, type AuditCategory, type AuditIssue, type AuditResult } from '../../shared/types';
 import type { NavStatus } from '../App';
 import { allPassedLabel } from '../categoryRows';
+import { savedReferenceLabel, splitSavedReference } from '../presentation';
 import { Affects, Footer, Header, SEVERITY_LABEL, SeverityDot, StaleBanner, plural, type FreshnessState } from './common';
 
 export function issuesIn(result: AuditResult, category: AuditCategory): AuditIssue[] {
@@ -21,6 +22,7 @@ interface Props {
 
 export function CategoryView({ result, category, navStatus, resolvedCount, freshness, onBack, onOpen, onGoToLayer, onRerun }: Props) {
   const issues = issuesIn(result, category);
+  const savedLabel = savedReferenceLabel(result);
   const checks = result.checksByCategory?.[category] ?? 0;
   return (
     <div class="screen">
@@ -40,20 +42,24 @@ export function CategoryView({ result, category, navStatus, resolvedCount, fresh
           <ul class="list">
             {issues.map((i) => (
               <li key={i.id}>
-                <FindingCard issue={i} navStatus={navStatus} onOpen={() => onOpen(i.id)} onGoToLayer={() => onGoToLayer(i.nodeId)} />
+                <FindingCard issue={i} savedLabel={savedLabel} navStatus={navStatus} onOpen={() => onOpen(i.id)} onGoToLayer={() => onGoToLayer(i.nodeId)} />
               </li>
             ))}
           </ul>
         )}
       </main>
       <Footer>
-        <button class="btn primary full" onClick={onRerun}>Re-run audit</button>
+        <button class="btn primary full" onClick={onRerun}>Run audit again</button>
       </Footer>
     </div>
   );
 }
 
-function FindingCard({ issue: i, navStatus, onOpen, onGoToLayer }: { issue: AuditIssue; navStatus: NavStatus | null; onOpen: () => void; onGoToLayer: () => void }) {
+function FindingCard({ issue: i, savedLabel, navStatus, onOpen, onGoToLayer }: { issue: AuditIssue; savedLabel: string; navStatus: NavStatus | null; onOpen: () => void; onGoToLayer: () => void }) {
+  // Findings that relied on a saved reference show a tag instead of a marker in the value.
+  const expected = splitSavedReference(i.expectedValue);
+  const why = splitSavedReference(i.rationale);
+  const saved = expected.saved || why.saved;
   const status = navStatus?.nodeId === i.nodeId ? navStatus : null;
   return (
     <article class={`finding finding-${i.severity}`} aria-label={`${SEVERITY_LABEL[i.severity]}: ${i.ruleName} on ${i.nodeName}`}>
@@ -67,9 +73,9 @@ function FindingCard({ issue: i, navStatus, onOpen, onGoToLayer }: { issue: Audi
           <>
             <span class="finding-values">
               <span class="muted">Layer</span> <span>{i.nodeName}</span>
-              <span class="muted">{i.expectedLabel}</span> <code>{i.expectedValue}</code>
+              <span class="muted">{i.expectedLabel}</span> <code>{expected.text}</code>
             </span>
-            <span class="finding-why"><span class="finding-why-label">Why it can’t be checked</span>{i.rationale}</span>
+            <span class="finding-why"><span class="finding-why-label">Why it can’t be checked</span>{why.text}</span>
           </>
         ) : (
           <>
@@ -79,9 +85,10 @@ function FindingCard({ issue: i, navStatus, onOpen, onGoToLayer }: { issue: Audi
             <Affects affects={i.affects} />
             <span class="finding-values">
               <span class="muted">Current</span> <code>{i.currentValue}</code>
-              <span class="muted">Expected</span> <code>{i.expectedValue}</code>
+              <span class="muted">Expected</span> <code>{expected.text}</code>
             </span>
-            <span class="finding-why">{i.rationale}</span>
+            {saved && <span class="saved-tag">{savedLabel}</span>}
+            <span class="finding-why">{why.text}</span>
           </>
         )}
       </button>

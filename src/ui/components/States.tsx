@@ -1,48 +1,17 @@
-import { useEffect } from 'preact/hooks';
-import type { AuditErrorKind, Discovery } from '../../shared/messages';
-import { Footer, Header, plural } from './common';
+import type { AuditErrorKind } from '../../shared/messages';
+import { Footer, Header } from './common';
 
-export function NoDesignSystem({
-  discovery,
-  savedCount,
-  onMount,
-  onChoose,
-  onCreateFromPage,
-}: {
-  discovery: Discovery | null;
-  /** Design systems saved on this device that can be selected here. */
-  savedCount: number;
-  onMount: () => void;
-  onChoose: () => void;
-  onCreateFromPage: () => void;
-}) {
-  useEffect(onMount, []);
-  const found = discovery && [
-    discovery.collections.length ? plural(discovery.collections.length, 'token collection') : '',
-    discovery.textStyles.length ? plural(discovery.textStyles.length, 'text style') : '',
-    discovery.paintStyles.library + discovery.paintStyles.local ? plural(discovery.paintStyles.library + discovery.paintStyles.local, 'colour style') : '',
-    discovery.components.length ? plural(discovery.components.length, 'component') : '',
-  ].filter(Boolean);
-
+/** First run in a file: ask which design system the page was designed with. */
+export function NoDesignSystem({ savedCount, onChoose }: { savedCount: number; onChoose: () => void }) {
   return (
     <div class="screen">
       <Header title="Design System Doctor" />
       <main class="body center-col">
         <h2 class="title">Which design system did you use?</h2>
-        <p class="muted">Doctor checks this page against the design system you choose.</p>
-        {!discovery ? (
-          <p class="muted small">Looking for styles, variables and components…</p>
-        ) : found && found.length ? (
-          <p class="muted small">This page uses {found.join(', ')}.</p>
-        ) : (
-          <p class="muted small">This page doesn’t use any styles, variables or components yet.</p>
-        )}
+        <p class="muted">Choose it once, and Doctor checks your pages against it.</p>
       </main>
       <Footer>
-        <button class="btn primary full" onClick={onChoose}>
-          {savedCount ? `Choose a design system (${savedCount} saved)` : 'Choose or capture a design system'}
-        </button>
-        <button class="btn secondary full" onClick={onCreateFromPage}>Create from this page</button>
+        <button class="btn primary full" onClick={onChoose}>{savedCount ? 'Choose a design system' : 'Add a design system'}</button>
       </Footer>
     </div>
   );

@@ -159,6 +159,16 @@ async function handle(msg: UiToMain) {
       if (chosen) commit({ ...settings, designSystem: JSON.parse(JSON.stringify(chosen)) });
       break;
     }
+    case 'rename-design-system':
+      library = library.map((r) => (r.id === msg.id ? { ...r, name: msg.name } : r));
+      if (settings.designSystem?.id === msg.id) settings = { ...settings, designSystem: { ...settings.designSystem, name: msg.name } };
+      post({ type: 'library-updated', settings, library });
+      break;
+    case 'remove-design-system':
+      library = library.filter((r) => r.id !== msg.id);
+      if (settings.designSystem?.id === msg.id) settings = { ...settings, designSystem: null };
+      post({ type: 'library-updated', settings, library });
+      break;
     case 'capture-design-system':
       await wait(400);
       commit({ ...settings, designSystem: capturedAcme() });
@@ -195,6 +205,7 @@ async function handle(msg: UiToMain) {
           auditId: '1', scope: msg.scope, pageId: '0:1', pageName: 'Checkout flow', startedAt: started.toISOString(), completedAt: new Date().toISOString(),
           scannedNodeCount: total, skippedNodeCount: 3, failedNodeCount: 0, issues: r.issues, compliance: r.compliance,
           designSystemName: reference.name,
+          designSystemId: reference.id,
           coverage: prepared.coverage,
           unresolvedSources: r.unresolvedSources,
           checksByCategory: r.checksByCategory,

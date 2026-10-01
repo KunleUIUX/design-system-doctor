@@ -28,4 +28,17 @@ describe('auditFingerprint', () => {
     expect(auditFingerprint([n], data(), auditConfig({ spacingScale: [0, 8] }))).not.toBe(auditFingerprint([n], data(), auditConfig()));
     expect(auditFingerprint([n], data(), auditConfig({}, { ignoredNodeIds: ['1:1'] }))).not.toBe(auditFingerprint([n], data(), auditConfig()));
   });
+
+  it('ignores the design system’s name, which no rule reads', () => {
+    const named = (name: string) => auditConfig({ name });
+    expect(auditFingerprint([n], data(), named('Rayna Design System'))).toBe(auditFingerprint([n], data(), named('Rayna UI')));
+  });
+
+  it('can reproduce fingerprints saved when the name was still included', () => {
+    const cfg = auditConfig({ name: 'Rayna UI' });
+    const legacy = auditFingerprint([n], data(), cfg, { designSystemName: 'Rayna UI' });
+    expect(legacy).not.toBe(auditFingerprint([n], data(), cfg));
+    // Exactly the old canonical form: the config's design system as it was, name included.
+    expect(auditFingerprint([n], data(), { ...cfg, designSystem: { ...cfg.designSystem!, name: 'Other' } }, { designSystemName: 'Rayna UI' })).toBe(legacy);
+  });
 });

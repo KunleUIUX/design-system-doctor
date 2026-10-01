@@ -41,7 +41,11 @@ export type UiToMain =
   /** Replace the active design system with a saved one. Nothing from the previous one is kept. */
   | { type: 'switch-design-system'; id: string }
   /** Capture this file's styles, variables and components as a design system, and select it. */
-  | { type: 'capture-design-system' };
+  | { type: 'capture-design-system' }
+  /** Saved design systems list only: rename one (the selected one keeps its id and stays selected). */
+  | { type: 'rename-design-system'; id: string; name: string }
+  /** Saved design systems list only: remove one. Removing the selected one leaves none selected. */
+  | { type: 'remove-design-system'; id: string };
 
 export type AuditErrorKind = 'cannot-start' | 'timeout' | 'cancelled' | 'no-design-system' | 'empty-selection';
 
@@ -77,4 +81,6 @@ export type MainToUi =
   | { type: 'audit-freshness'; auditId: string; pageId: string; state: 'current' | 'changed' | 'unverified' }
   /** `session`: the file can't store them (read-only), so settings last until the plugin closes. */
   | { type: 'settings-saved'; settings: PluginSettings; library: DesignSystemReference[]; savedTo: 'file' | 'session' }
-  | { type: 'capture-failed'; message: string };
+  | { type: 'capture-failed'; message: string }
+  /** The saved list changed (rename/remove) without choosing a design system. */
+  | { type: 'library-updated'; settings: PluginSettings; library: DesignSystemReference[] };

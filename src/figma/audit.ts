@@ -108,6 +108,7 @@ export async function performAudit(
       issues: evaluation.issues,
       compliance: evaluation.compliance,
       designSystemName: reference.name,
+      designSystemId: reference.id,
       unresolvedSources: evaluation.unresolvedSources,
       coverage,
       checksByCategory: evaluation.checksByCategory,
@@ -140,7 +141,10 @@ export async function checkFreshness(result: AuditResult, settings: AuditSetting
   if (total > FRESHNESS_MAX_LAYERS) return 'unverified';
   try {
     const { traversal, data, config } = await readInputs(roots, settings, { total, deadline: Date.now() + FRESHNESS_BUDGET_MS });
-    return auditFingerprint(traversal.nodes, data, config) === result.fingerprint ? 'current' : 'changed';
+    if (auditFingerprint(traversal.nodes, data, config) === result.fingerprint) return 'current';
+    // Saved before the design system's name was left out of the fingerprint.
+    const legacy = auditFingerprint(traversal.nodes, data, config, { designSystemName: result.designSystemName });
+    return legacy === result.fingerprint ? 'current' : 'changed';
   } catch {
     return 'unverified';
   }

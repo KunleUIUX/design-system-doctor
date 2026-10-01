@@ -26,7 +26,14 @@ interface Props {
    * are summarised rather than listed asset by asset.
    */
   captured?: DesignSystemReference | null;
+  /** `new`: creating a design system from this page. `edit`: the selected one's settings. */
+  mode: 'edit' | 'new';
 }
+
+/** The five checks everyone sees; finer ones live under Advanced. */
+const MAIN_IDS = ['typography', 'color', 'component', 'spacing', 'radius'];
+const MAIN_CHECKS = RULE_CATALOG.filter((r) => MAIN_IDS.includes(r.id));
+const FINE_CHECKS = RULE_CATALOG.filter((r) => !MAIN_IDS.includes(r.id));
 
 interface Row {
   ref: AssetRef;
@@ -48,7 +55,7 @@ function rowsFor(found: AssetIdentity[], selected: AssetRef[], meta?: (a: AssetI
 
 const toggleRef = (refs: AssetRef[], ref: AssetRef, on: boolean) => (on ? [...refs.filter((r) => !sameRef(r, ref)), ref] : refs.filter((r) => !sameRef(r, ref)));
 
-export function Configure({ config, discovery, initial, onSave, onCancel, captured }: Props) {
+export function Configure({ config, discovery, initial, onSave, onCancel, captured, mode }: Props) {
   const [ds, setDs] = useState<DesignSystemConfig | null>(config.designSystem ?? initial ?? null);
   const [spacing, setSpacing] = useState((config.designSystem ?? initial)?.spacingScale.join(', ') ?? '');
   const [radius, setRadius] = useState((config.designSystem ?? initial)?.radiusScale.join(', ') ?? '');
@@ -73,8 +80,8 @@ export function Configure({ config, discovery, initial, onSave, onCancel, captur
   if (!ds) {
     return (
       <div class="screen">
-        <Header title="Design system" onBack={onCancel} />
-        <main class="body"><p class="muted" aria-live="polite">Looking for styles, variables and components in this file…</p></main>
+        <Header title={mode === 'new' ? 'Create from this page' : 'Edit settings'} onBack={onCancel} />
+        <main class="body"><p class="muted" aria-live="polite">Looking at what this page uses…</p></main>
       </div>
     );
   }
@@ -92,6 +99,8 @@ export function Configure({ config, discovery, initial, onSave, onCancel, captur
   // Captured library assets don't need to be used here: their values were captured.
   if (captured) validation.warnings = validation.warnings.filter((w) => !w.includes('isn’t used in this file'));
   const counts = captured ? countItems(captured) : null;
+
+  const toggleRule = (id: string, on: boolean) => setDisabled(on ? disabled.filter((d) => d !== id) : [...disabled, id]);
 
   const setSelection = (key: 'textStyles' | 'components', patch: Partial<SourceSelection>) => setDs({ ...ds, [key]: { ...ds[key], ...patch } });
 
@@ -113,25 +122,62 @@ export function Configure({ config, discovery, initial, onSave, onCancel, captur
 
   return (
     <div class="screen">
-      <Header title="Design system" onBack={onCancel} />
+      <Header title={mode === 'new' ? 'Create from this page' : 'Edit settings'} onBack={onCancel} />
       <main class="body configure">
-        <p class="muted">
-          Tell Doctor what’s official. Every layer on the page is checked against these sources.
-          {!config.designSystem && ' We’ve pre-selected what looks like a shared design system; check it before saving.'}
-        </p>
+        {mode === 'new' ? (
+          <p class="muted">
+            Doctor starts from the styles, variables and components already used on this page. Give it a name, check the
+            scales, and save. You can fine-tune what’s included under Advanced.
+          </p>
+        ) : captured ? (
+          <p class="muted small">
+            {describeSource(captured)}. To update it, open that library file in Figma and choose “Save a library as a design
+            system” there. This design system is updated in place.
+          </p>
+        ) : null}
         <label class="field">
           <span class="label">Name</span>
           <input value={ds.name} onInput={(e) => setDs({ ...ds, name: (e.target as HTMLInputElement).value })} />
         </label>
 
-        <h3 class="section-title">Design system sources</h3>
-        {captured && (
-          <p class="muted small">
-            {describeSource(captured)}. To update its styles, tokens and components, capture the library file again.
-          </p>
+        <h3 class="section-title">Spacing and corner radius</h3>
+        <label class="field">
+          <span class="label">Spacing (px)</span>
+          <input value={spacing} onInput={(e) => setSpacing((e.target as HTMLInputElement).value)} aria-invalid={scales.spacing.errors.length > 0} />
+          <span class="muted small">Gaps and padding in auto layout must use one of these values.</span>
+        </label>
+        <label class="field">
+          <span class="label">Corner radius (px)</span>
+          <input value={radius} onInput={(e) => setRadius((e.target as HTMLInputElement).value)} aria-invalid={scales.radius.errors.length > 0} />
+          <span class="muted small">Include a large value such as 999 to allow fully rounded shapes.</span>
+        </label>
+
+        <h3 class="section-title">Checks</h3>
+        <div class="source">
+          {MAIN_CHECKS.map((r) => (
+            <label class="check" key={r.id} title={r.description}>
+              <input type="checkbox" checked={!disabled.includes(r.id)} onChange={(e) => toggleRule(r.id, (e.target as HTMLInputElement).checked)} />
+              <span>{r.name} <span class="muted small">· {r.description}</span></span>
+            </label>
+          ))}
+          <label class="check">
+            <input type="checkbox" checked={includeHidden} onChange={(e) => setIncludeHidden((e.target as HTMLInputElement).checked)} />
+            Check hidden layers
+          </label>
+        </div>
+
+        {ignored.length > 0 && (
+          <div class="row-between">
+            <span class="muted">{plural(ignored.length, 'ignored layer')} in this file</span>
+            <button class="link" onClick={() => setIgnored([])}>Clear</button>
+          </div>
         )}
 
-        <SourceSection title="Tokens" hint="Choose the variable collections your team uses as tokens. Every variable in a chosen collection counts as approved.">
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <p class="muted small">What this design system includes, item by item. Most people never need to change this.</p>
+
+        <SourceSection title="Variables" hint="The variable collections your team uses as tokens. Every variable in a chosen collection counts as approved.">
           {counts && <p class="small">{plural(counts.collections, 'collection')} · {plural(counts.variables, 'variable')} captured</p>}
           {!counts && !discovery && <p class="muted small">Loading…</p>}
           {!counts && discovery && collectionRows.length === 0 && <p class="muted small">No variable collections are used on this page or made in this file.</p>}
@@ -179,42 +225,15 @@ export function Configure({ config, discovery, initial, onSave, onCancel, captur
           onChange={(patch) => setSelection('components', patch)}
         />
 
-        <h3 class="section-title">Scales</h3>
-        <label class="field">
-          <span class="label">Spacing (px)</span>
-          <input value={spacing} onInput={(e) => setSpacing((e.target as HTMLInputElement).value)} aria-invalid={scales.spacing.errors.length > 0} />
-          <span class="muted small">Gaps and padding in auto layout must use one of these values.</span>
-        </label>
-        <label class="field">
-          <span class="label">Corner radius (px)</span>
-          <input value={radius} onInput={(e) => setRadius((e.target as HTMLInputElement).value)} aria-invalid={scales.radius.errors.length > 0} />
-          <span class="muted small">Include a large value such as 999 to allow fully rounded shapes.</span>
-        </label>
-
-        <h3 class="section-title">Rules</h3>
-        <div class="source">
-          {RULE_CATALOG.map((r) => (
-            <label class="check" key={r.id} title={r.description}>
-              <input
-                type="checkbox"
-                checked={!disabled.includes(r.id)}
-                onChange={(e) => setDisabled((e.target as HTMLInputElement).checked ? disabled.filter((d) => d !== r.id) : [...disabled, r.id])}
-              />
-              <span>{r.name} <span class="muted small">· {r.description}</span></span>
-            </label>
-          ))}
-          <label class="check">
-            <input type="checkbox" checked={includeHidden} onChange={(e) => setIncludeHidden((e.target as HTMLInputElement).checked)} />
-            Audit hidden layers
-          </label>
-        </div>
-
-        {ignored.length > 0 && (
-          <div class="row-between">
-            <span class="muted">{plural(ignored.length, 'ignored layer')} in this file</span>
-            <button class="link" onClick={() => setIgnored([])}>Clear</button>
-          </div>
-        )}
+          <SourceSection title="Other checks" hint="Finer checks that are off by default in some teams.">
+            {FINE_CHECKS.map((r) => (
+              <label class="check" key={r.id} title={r.description}>
+                <input type="checkbox" checked={!disabled.includes(r.id)} onChange={(e) => toggleRule(r.id, (e.target as HTMLInputElement).checked)} />
+                <span>{r.name} <span class="muted small">· {r.description}</span></span>
+              </label>
+            ))}
+          </SourceSection>
+        </details>
 
         {(validation.errors.length > 0 || validation.warnings.length > 0) && (
           <div class="validation">
@@ -232,7 +251,7 @@ export function Configure({ config, discovery, initial, onSave, onCancel, captur
         )}
       </main>
       <Footer>
-        <button class="btn primary full" disabled={validation.errors.length > 0} onClick={save}>Save design system</button>
+        <button class="btn primary full" disabled={validation.errors.length > 0} onClick={save}>{mode === 'new' ? 'Save design system' : 'Save'}</button>
       </Footer>
     </div>
   );

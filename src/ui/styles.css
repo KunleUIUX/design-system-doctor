@@ -230,3 +230,48 @@ section.source, div.source { border: 1px solid var(--border); border-radius: 6px
 .coverage { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
 .coverage-list { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 2px; }
 .coverage-list li { display: flex; justify-content: space-between; gap: 8px; }
+
+/* Home: design system card and what-to-check toggle */
+.ds-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 12px; }
+.ds-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ds-card-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-card-status.ok { color: var(--success); }
+.ds-card-status.partial { color: var(--text-secondary); }
+.segmented { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented button { flex: 1; padding: 7px 8px; background: none; border: 0; color: var(--text); font: inherit; cursor: pointer; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.on { background: var(--bg-hover); font-weight: 600; }
+.segmented button:disabled { color: var(--text-secondary); cursor: default; }
+
+/* Select design system */
+.ds-item { display: block; padding: 0; }
+.ds-row { display: flex; align-items: center; gap: 4px; }
+.ds-select { flex: 1; display: flex; align-items: center; gap: 8px; padding: 10px 4px; background: none; border: 0; text-align: left; color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
+.ds-select:hover { background: var(--bg-hover); }
+.ds-check { width: 14px; color: var(--link); font-weight: 700; flex-shrink: 0; }
+.ds-item.active .ds-text strong { font-weight: 700; }
+.ds-menu { display: flex; flex-direction: column; margin: 0 0 8px 26px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.ds-menu button { padding: 7px 10px; background: none; border: 0; text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.ds-menu button + button { border-top: 1px solid var(--border); }
+.ds-menu button:hover { background: var(--bg-hover); }
+.ds-menu .danger, .btn.danger { color: var(--danger-text); }
+.ds-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px 26px; }
+.ds-inline input { flex: 1; min-width: 120px; }
+.add-option { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 10px 12px; margin-bottom: 8px; background: none; border: 1px solid var(--border); border-radius: 6px; text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.add-option:hover:not(:disabled) { background: var(--bg-hover); }
+.add-option:disabled { opacity: .6; cursor: default; }
+
+/* Edit settings: Advanced */
+.advanced { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
+.advanced > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+.advanced[open] > summary { margin-bottom: 4px; }
+
+/* Results: what was checked against */
+.checked-against { margin: 2px 0 0; }
+.reference-note { margin: 4px 0 8px; }
+.reference-details ul { list-style: none; margin: 6px 0 4px; padding: 0; display: grid; gap: 2px; }
+.reference-details li { display: flex; justify-content: space-between; gap: 8px; }
+.banner .reference-details { flex-basis: 100%; }
+
+/* Findings that relied on a saved reference */
+.saved-tag { display: inline-block; align-self: flex-start; font-size: 10px; line-height: 16px; padding: 0 6px; border-radius: 8px; background: var(--info-bg); color: var(--text-secondary); white-space: nowrap; }

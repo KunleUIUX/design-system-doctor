@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
-import { CATEGORY_LABELS, type AuditCategory, type AuditResult, type CoverageCount, type ReferenceCoverage } from '../../shared/types';
+import { CATEGORY_LABELS, type AuditCategory, type AuditResult } from '../../shared/types';
 import { categoryRows, type CategoryRow } from '../categoryRows';
+import { referenceSummary } from '../presentation';
 import {
   AuditCounts,
   ConfidenceNote,
@@ -16,6 +17,8 @@ import {
 
 interface Props {
   result: AuditResult;
+  /** The design system it was checked against, by its current name. */
+  designSystemName: string;
   ruleErrorCount: number;
   resolvedCount: number;
   freshness: FreshnessState;
@@ -24,7 +27,7 @@ interface Props {
   onHome: () => void;
 }
 
-export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOpen, onRerun, onHome }: Props) {
+export function Results({ result, designSystemName, ruleErrorCount, resolvedCount, freshness, onOpen, onRerun, onHome }: Props) {
   const [showFormula, setShowFormula] = useState(false);
   const totals = countBySeverity(result.issues);
   const { compliance } = result;
@@ -36,7 +39,7 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
 
   return (
     <div class="screen">
-      <Header title="Design audit" onBack={onHome} />
+      <Header title="Results" onBack={onHome} />
       <main class="body">
         <StaleBanner freshness={freshness} onRerun={onRerun} />
         <section class="score">
@@ -46,8 +49,9 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
           <div class="muted">Design system compliance</div>
           <ConfidenceNote result={result} />
           <div class="score-meta">
-            {result.scope === 'page' ? result.pageName : 'Selection'} · {result.designSystemName} · {formatWhen(result.completedAt)}
+            {result.scope === 'page' ? result.pageName : 'Selection'} · {formatWhen(result.completedAt)}
           </div>
+          <p class="checked-against muted small">Checked against {designSystemName}</p>
           <AuditCounts result={result} />
           <button class="link small" onClick={() => setShowFormula(!showFormula)} aria-expanded={showFormula}>
             How is this calculated?
@@ -61,17 +65,10 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
           )}
         </section>
 
-        {result.unresolvedSources && result.unresolvedSources.length > 0 && (
-          <div class="banner neutral" role="status">
-            <strong>Some approved sources can’t be read in this file:</strong>{' '}
-            {result.unresolvedSources.map((s) => `${s.name} (${s.source === 'library' ? 'library, not used here yet' : 'missing'})`).join(', ')}.
-            {' '}Checks that depend on them are marked “Not verifiable” and don’t count toward the score.
-          </div>
-        )}
-        {result.coverage && <CoverageNote coverage={result.coverage} />}
         {resolvedCount > 0 && (
           <div class="banner success" role="status">✓ {plural(resolvedCount, 'finding')} resolved since the last audit.</div>
         )}
+        <ReferenceNote result={result} designSystemName={designSystemName} />
         {result.failedNodeCount > 0 && (
           <div class="banner warning">
             <strong>Audit completed with limitations.</strong> {plural(result.failedNodeCount, 'layer')} could not be analysed. The
@@ -120,7 +117,7 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
         {hiddenSkipped > 0 && <p class="muted small">{plural(hiddenSkipped, 'hidden layer')} (and their contents) skipped.</p>}
       </main>
       <Footer>
-        <button class="btn primary full" onClick={onRerun}>Re-run audit</button>
+        <button class="btn primary full" onClick={onRerun}>Run audit again</button>
       </Footer>
     </div>
   );
@@ -152,41 +149,49 @@ function CategoryList({ rows, onOpen }: { rows: CategoryRow[]; onOpen: (category
 }
 
 /**
- * How much of the selected design system this audit could actually use: read from the file,
- * taken from captured values, or unavailable (dependent checks are "Not verifiable").
+ * What the audit could use of the selected design system, without internal terms. Nothing extra
+ * when everything was read normally; a short note when a saved reference filled gaps; one neutral
+ * banner when some checks couldn't be done. Category detail sits behind "Details".
  */
-function CoverageNote({ coverage }: { coverage: ReferenceCoverage }) {
-  const rows: [string, CoverageCount][] = [
-    ['Text styles', coverage.textStyles],
-    ['Tokens', coverage.tokens],
-    ['Colour styles', coverage.paintStyles],
-    ['Components', coverage.components],
-  ];
-  const listed = rows.filter(([, c]) => c.total > 0);
-  if (!listed.length) return null;
-  const usedCaptured = listed.some(([, c]) => c.captured > 0);
-  const date = coverage.capturedAt ? new Date(coverage.capturedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
-  return (
-    <div class="coverage" role="note">
-      <p class="small"><strong>Design system coverage</strong></p>
-      <ul class="coverage-list">
-        {listed.map(([label, c]) => (
-          <li key={label} class="small">
-            <span>{label}</span>
-            <span class="muted">
-              {[c.live ? `${c.live} read here` : '', c.captured ? `${c.captured} captured` : '', c.unavailable ? `${c.unavailable} unavailable` : '']
-                .filter(Boolean)
-                .join(' · ')}
-            </span>
-          </li>
+function ReferenceNote({ result, designSystemName }: { result: AuditResult; designSystemName: string }) {
+  const [open, setOpen] = useState(false);
+  const summary = referenceSummary(result);
+  if (summary.kind === 'full') return null;
+  const details = open && (
+    <div class="reference-details small">
+      <ul>
+        {summary.details.map((d) => (
+          <li key={d.label}><span>{d.label}</span><span class="muted">{d.parts.join(' · ')}</span></li>
         ))}
       </ul>
-      {usedCaptured && (
-        <p class="muted small">
-          Where this file couldn’t read the design system, Doctor used values captured from its library file{date ? ` on ${date}` : ''}. Those
-          findings name the asset with “(captured)”.
+      {summary.missing.length > 0 && <p class="muted">Not available in this file: {summary.missing.join(', ')}.</p>}
+      {summary.kind === 'partial' && (
+        <p class="muted">
+          To check these, make sure the design system’s library is enabled for this file (Assets → Libraries), or save the
+          library as a design system from its own file.
         </p>
       )}
+    </div>
+  );
+  const toggle = (
+    <button class="link small" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide details' : 'Details'}</button>
+  );
+  if (summary.kind === 'partial') {
+    return (
+      <div class="banner neutral" role="status">
+        <span>
+          Some parts of {designSystemName} couldn’t be checked in this file. Those checks are marked Not verifiable and
+          don’t affect the score.
+        </span>
+        {toggle}
+        {details}
+      </div>
+    );
+  }
+  return (
+    <div class="reference-note muted small">
+      <span>Some checks used a saved reference{summary.savedOn ? ` from ${summary.savedOn}` : ''}.</span> {toggle}
+      {details}
     </div>
   );
 }

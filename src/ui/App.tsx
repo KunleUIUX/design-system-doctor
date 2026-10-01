@@ -10,7 +10,8 @@ import { IssueDetail } from './components/IssueDetail';
 import { Progress } from './components/Progress';
 import { Results } from './components/Results';
 import { ConfirmLarge, ErrorState, NoDesignSystem } from './components/States';
-import { SwitchDesignSystem } from './components/SwitchDesignSystem';
+import { SelectDesignSystem } from './components/SelectDesignSystem';
+import { afterSelect, auditedName } from './presentation';
 import type { FreshnessState } from './components/common';
 
 export interface ProgressState {
@@ -31,7 +32,7 @@ type View =
   | { name: 'home' }
   /** `edit` changes the active design system; `new` creates one from this page and replaces it. */
   | { name: 'configure'; mode: 'edit' | 'new' }
-  | { name: 'switch' }
+  | { name: 'select' }
   | { name: 'confirm-large'; layerCount: number; scope: AuditScope }
   | { name: 'running' }
   | { name: 'results' }
@@ -80,6 +81,7 @@ export function App() {
         setLibrary(msg.library);
         setPageName(msg.pageName);
         setSelectionCount(msg.selectionCount);
+        setScope(msg.selectionCount > 0 ? 'selection' : 'page');
         show(msg.lastAudit, msg.lastAudit ? 'checking' : 'current');
         setView({ name: 'home' });
         break;
@@ -94,6 +96,8 @@ export function App() {
       case 'selection-changed':
         setPageName(msg.pageName);
         setSelectionCount(msg.selectionCount);
+        // What to check follows the canvas: a selection means "check these layers".
+        setScope(msg.selectionCount > 0 ? 'selection' : 'page');
         break;
       case 'audit-confirm-large':
         setView({ name: 'confirm-large', layerCount: msg.layerCount, scope: msg.scope });
@@ -129,11 +133,19 @@ export function App() {
         setSettings(msg.settings);
         setLibrary(msg.library);
         setSessionOnly(msg.savedTo === 'session');
-        // A design system was chosen or captured: back to the start, ready to audit.
-        if (viewRef.current.name === 'switch') {
+        // A design system was chosen or saved: back to the start, ready to audit (or on to its
+        // settings, when "Edit settings" was chosen for a system that wasn't selected yet).
+        if (viewRef.current.name === 'select') {
           setCapture({ busy: false });
-          setView({ name: 'home' });
+          const next = afterSelect(editAfterSelect.current, msg.settings.designSystem?.id);
+          editAfterSelect.current = null;
+          if (next === 'edit') openConfigure('edit');
+          else setView({ name: 'home' });
         }
+        break;
+      case 'library-updated':
+        setSettings(msg.settings);
+        setLibrary(msg.library);
         break;
       case 'capture-failed':
         setCapture({ busy: false, message: msg.message });
@@ -179,6 +191,17 @@ export function App() {
     setView({ name: 'home' });
   };
 
+  /**
+   * Set when "Edit settings" picks a system that isn't selected yet: select it, then edit it. Holds
+   * that system's id, so the edit screen only opens once it's the one selected.
+   */
+  const editAfterSelect = useRef<string | null>(null);
+  const editSystem = (id: string) => {
+    if (settings?.designSystem?.id === id) return openConfigure('edit');
+    editAfterSelect.current = id;
+    send({ type: 'switch-design-system', id });
+  };
+
   const captureFile = () => {
     setCapture({ busy: true });
     send({ type: 'capture-design-system' });
@@ -200,32 +223,28 @@ export function App() {
 
   if (!settings || view.name === 'loading') return <div class="center muted">Loading…</div>;
 
-  const switchScreen = (
-    <SwitchDesignSystem
+  const selectScreen = (
+    <SelectDesignSystem
       library={library}
       activeId={settings.designSystem?.id ?? null}
       capture={capture}
-      onUse={(id) => send({ type: 'switch-design-system', id })}
-      onCreateFromPage={() => openConfigure('new')}
-      onCapture={captureFile}
-      onBack={() => {
-        setCapture({ busy: false });
-        setView({ name: 'home' });
+      onSelect={(id) => {
+        editAfterSelect.current = null;
+        if (id === settings.designSystem?.id) setView({ name: 'home' });
+        else send({ type: 'switch-design-system', id });
       }}
+      onEdit={editSystem}
+      onRename={(id, name) => send({ type: 'rename-design-system', id, name })}
+      onRemove={(id) => send({ type: 'remove-design-system', id })}
+      onSaveLibrary={captureFile}
+      onCreateFromPage={() => openConfigure('new')}
+      onBack={settings.designSystem ? () => (setCapture({ busy: false }), setView({ name: 'home' })) : undefined}
     />
   );
 
   if (!settings.designSystem && view.name !== 'configure') {
-    if (view.name === 'switch') return switchScreen;
-    return (
-      <NoDesignSystem
-        discovery={discovery}
-        savedCount={library.length}
-        onMount={() => send({ type: 'get-discovery' })}
-        onChoose={() => setView({ name: 'switch' })}
-        onCreateFromPage={() => openConfigure('new')}
-      />
-    );
+    if (view.name === 'select') return selectScreen;
+    return <NoDesignSystem savedCount={library.length} onChoose={() => setView({ name: 'select' })} />;
   }
   /** The engine-facing view of the settings, which the settings screen edits. */
   const config: AuditConfig = { ...settings, designSystem: settings.designSystem ? toSelection(settings.designSystem) : null };
@@ -240,10 +259,9 @@ export function App() {
           scope={scope}
           onScope={setScope}
           onRun={(s) => run(s)}
-          onEdit={() => openConfigure('edit')}
-          onSwitch={() => {
+          onChange={() => {
             setCapture({ busy: false });
-            setView({ name: 'switch' });
+            setView({ name: 'select' });
           }}
           sessionOnly={sessionOnly}
           lastResult={result}
@@ -254,19 +272,20 @@ export function App() {
           }}
         />
       );
-    case 'switch':
-      return switchScreen;
+    case 'select':
+      return selectScreen;
     case 'configure': {
       const editing = view.mode === 'edit' && !!settings.designSystem;
       return (
         <Configure
           key={view.mode}
+          mode={editing ? 'edit' : 'new'}
           // A new design system starts from this page's suggestion, never from the current one.
           config={editing ? config : { ...config, designSystem: null }}
           discovery={discovery}
           captured={editing && settings.designSystem && hasCapturedValues(settings.designSystem) ? settings.designSystem : null}
           onSave={(next) => saveConfigure(view.mode, next)}
-          onCancel={settings.designSystem ? () => setView({ name: 'home' }) : () => setView({ name: 'switch' })}
+          onCancel={() => setView({ name: editing ? 'home' : 'select' })}
         />
       );
     }
@@ -301,6 +320,7 @@ export function App() {
       return (
         <Results
           result={result}
+          designSystemName={auditedName(result, settings.designSystem)}
           ruleErrorCount={ruleErrorCount}
           resolvedCount={resolvedCount}
           freshness={freshness}

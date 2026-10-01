@@ -42,7 +42,7 @@ export function StaleBanner({ freshness, onRerun }: { freshness: FreshnessState;
           ? <><strong>Design has changed since this audit.</strong> These results may be out of date.</>
           : 'This page is too large to confirm the results are still current.'}
       </span>
-      <button class="link" onClick={onRerun}>Re-run audit</button>
+      <button class="link" onClick={onRerun}>Run audit again</button>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { AuditCategory, AuditResult } from '../../shared/types';
 import type { NavStatus } from '../App';
 import { issuesIn } from './CategoryView';
+import { savedReferenceLabel, splitSavedReference } from '../presentation';
 import { Affects, Footer, Header, SEVERITY_LABEL, SeverityDot, StaleBanner, type FreshnessState } from './common';
 
 interface Props {
@@ -23,6 +24,10 @@ export function IssueDetail({ result, category, issueId, navStatus, freshness, o
   if (!issue) return <div class="center muted">This item is no longer in the results.</div>;
   const status = navStatus?.nodeId === issue.nodeId ? navStatus : null;
   const sameNodeCount = result.issues.filter((i) => i.nodeId === issue.nodeId).length;
+
+  const expected = splitSavedReference(issue.expectedValue);
+  const why = splitSavedReference(issue.rationale);
+  const saved = expected.saved || why.saved;
 
   return (
     <div class="screen">
@@ -59,20 +64,20 @@ export function IssueDetail({ result, category, issueId, navStatus, freshness, o
               <dt>Layer</dt>
               <dd>{issue.nodeName}</dd>
               <dt>{issue.expectedLabel}</dt>
-              <dd><code>{issue.expectedValue}</code></dd>
+              <dd><code>{expected.text}</code>{saved && <> <span class="saved-tag">{savedReferenceLabel(result)}</span></>}</dd>
             </>
           ) : (
             <>
               <dt>Current</dt>
               <dd><code>{issue.currentValue}</code></dd>
               <dt>Expected</dt>
-              <dd><code>{issue.expectedValue}</code></dd>
+              <dd><code>{expected.text}</code>{saved && <> <span class="saved-tag">{savedReferenceLabel(result)}</span></>}</dd>
             </>
           )}
         </dl>
 
         <h3 class="section-title">{issue.severity === 'unverifiable' ? 'Why it can’t be checked' : 'Why this matters'}</h3>
-        <p>{issue.rationale}</p>
+        <p>{why.text}</p>
         <h3 class="section-title">How to fix</h3>
         <p>{issue.suggestedAction}</p>
 
@@ -85,7 +90,7 @@ export function IssueDetail({ result, category, issueId, navStatus, freshness, o
         <button class="btn primary full" onClick={() => onGoToLayer(issue.nodeId)}>Go to layer</button>
         <div class="row-between">
           <button class="link small" onClick={() => onIgnore(issue.nodeId)} title="Skip this layer in future audits">Ignore this layer</button>
-          <button class="link small" onClick={onRerun}>Re-run audit</button>
+          <button class="link small" onClick={onRerun}>Run audit again</button>
         </div>
       </Footer>
     </div>

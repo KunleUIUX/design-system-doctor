@@ -6,8 +6,12 @@ import type { AuditConfig, DesignSystemData, NodeSnapshot } from '../shared/type
  *
  * Inputs are canonicalised (design-system arrays sorted by id) because Figma resolves styles and
  * variables in parallel and their arrival order isn't stable.
+ *
+ * The design system's name is presentation only (no rule reads it), so it's left out: renaming a
+ * design system doesn't make its audits out of date. Results saved before that hashed the name they
+ * were audited with; pass it as `legacy` to reproduce those fingerprints exactly.
  */
-export function auditFingerprint(nodes: NodeSnapshot[], data: DesignSystemData, config: AuditConfig): string {
+export function auditFingerprint(nodes: NodeSnapshot[], data: DesignSystemData, config: AuditConfig, legacy?: { designSystemName: string }): string {
   const byId = <T extends { id: string }>(xs: T[]) => [...xs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const canonical = JSON.stringify({
     nodes,
@@ -21,7 +25,7 @@ export function auditFingerprint(nodes: NodeSnapshot[], data: DesignSystemData, 
       components: byId(data.components),
     },
     config: {
-      designSystem: config.designSystem,
+      designSystem: semanticDesignSystem(config.designSystem, legacy),
       disabledRules: [...config.disabledRules].sort(),
       includeHidden: config.includeHidden,
       ignoredNodeIds: [...config.ignoredNodeIds].sort(),
@@ -29,6 +33,13 @@ export function auditFingerprint(nodes: NodeSnapshot[], data: DesignSystemData, 
     },
   });
   return fnv1a(canonical);
+}
+
+function semanticDesignSystem(ds: AuditConfig['designSystem'], legacy?: { designSystemName: string }) {
+  if (!ds) return ds;
+  if (legacy) return { ...ds, name: legacy.designSystemName }; // same key order as when it was saved
+  const { name: _name, ...semantic } = ds;
+  return semantic;
 }
 
 /** 64-bit FNV-1a as two 32-bit halves; fast, dependency-free, fine for change detection. */

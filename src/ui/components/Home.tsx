@@ -1,6 +1,6 @@
 import type { AuditScope } from '../../shared/messages';
-import { describeSource } from '../../shared/reference';
 import type { AuditResult, PluginSettings } from '../../shared/types';
+import { homeStatus } from '../presentation';
 import { ConfidenceNote, Footer, Header, SeverityDot, countBySeverity, formatWhen, plural, type FreshnessState } from './common';
 
 interface Props {
@@ -10,10 +10,8 @@ interface Props {
   scope: AuditScope;
   onScope: (s: AuditScope) => void;
   onRun: (scope: AuditScope) => void;
-  /** Change the active design system's settings. */
-  onEdit: () => void;
-  /** Replace it with another design system. */
-  onSwitch: () => void;
+  /** Choose a different design system. */
+  onChange: () => void;
   lastResult: AuditResult | null;
   freshness: FreshnessState;
   onShowResults: () => void;
@@ -21,53 +19,54 @@ interface Props {
   sessionOnly?: boolean;
 }
 
-export function Home({ settings, pageName, selectionCount, scope, onScope, onRun, onEdit, onSwitch, lastResult, freshness, onShowResults, sessionOnly }: Props) {
+/** Select what to check → design system → run audit. One primary action. */
+export function Home({ settings, pageName, selectionCount, scope, onScope, onRun, onChange, lastResult, freshness, onShowResults, sessionOnly }: Props) {
   const ds = settings.designSystem!;
   const effectiveScope = scope === 'selection' && selectionCount === 0 ? 'page' : scope;
+  const status = homeStatus(ds, lastResult);
   return (
     <div class="screen">
       <Header title="Design System Doctor" />
       <main class="body">
-        <label class="field">
-          <span class="label">Scope</span>
-          <select value={effectiveScope} onChange={(e) => onScope((e.target as HTMLSelectElement).value as AuditScope)}>
-            <option value="page">Current page · {pageName}</option>
-            <option value="selection" disabled={selectionCount === 0}>
-              {selectionCount ? `Selection · ${plural(selectionCount, 'layer')}` : 'Selection (select layers first)'}
-            </option>
-          </select>
-        </label>
-
-        <div class="field">
-          <span class="label">Design system</span>
-          <div class="row-between boxed">
-            <span class="ds-current">
-              <span>{ds.name}</span>
-              <span class="muted small">{describeSource(ds)}</span>
-            </span>
-            <span class="ds-actions">
-              <button class="link" onClick={onEdit}>Edit</button>
-              <button class="link" onClick={onSwitch}>Switch</button>
-            </span>
+        <section class="ds-card" aria-label="Design system">
+          <div class="ds-card-text">
+            <span class="label">Design system</span>
+            <strong class="ds-card-name">{ds.name}</strong>
+            <span class={`ds-card-status small ${status === 'Ready' ? 'ok' : 'partial'}`}>{status}</span>
           </div>
-          {sessionOnly && <span class="muted small">This file is view-only, so these settings last until you close the plugin.</span>}
+          <button class="link" onClick={onChange}>Change</button>
+        </section>
+        {sessionOnly && <p class="muted small">This file is view-only, so these settings last until you close the plugin.</p>}
+
+        <div class="field" role="radiogroup" aria-label="What to check">
+          <span class="label">What to check</span>
+          <div class="segmented">
+            <button role="radio" aria-checked={effectiveScope === 'page'} class={effectiveScope === 'page' ? 'on' : ''} onClick={() => onScope('page')} title={pageName}>
+              This page
+            </button>
+            <button role="radio" aria-checked={effectiveScope === 'selection'} class={effectiveScope === 'selection' ? 'on' : ''}
+              disabled={selectionCount === 0} onClick={() => onScope('selection')}
+              title={selectionCount ? undefined : 'Select layers in the canvas first'}>
+              {selectionCount ? `Selection (${plural(selectionCount, 'layer')})` : 'Selection'}
+            </button>
+          </div>
         </div>
 
-        <section class="field" aria-labelledby="last-audit-label">
-          <span class="label" id="last-audit-label">Last audit</span>
-          {lastResult ? <LastAudit result={lastResult} freshness={freshness} onView={onShowResults} onRun={() => onRun(lastResult.scope)} /> : (
-            <p class="last-audit empty-card muted">No audit yet for this page. Run one to see how it measures up.</p>
-          )}
-        </section>
+        {lastResult && (
+          <section class="field" aria-labelledby="last-audit-label">
+            <span class="label" id="last-audit-label">Last audit</span>
+            <LastAudit result={lastResult} freshness={freshness} onView={onShowResults} />
+          </section>
+        )}
       </main>
       <Footer>
-        <button class="btn primary full" onClick={() => onRun(effectiveScope)}>Run design audit</button>
+        <button class="btn primary full" onClick={() => onRun(effectiveScope)}>{lastResult ? 'Run audit again' : 'Run audit'}</button>
       </Footer>
     </div>
   );
 }
 
-function LastAudit({ result, freshness, onView, onRun }: { result: AuditResult; freshness: FreshnessState; onView: () => void; onRun: () => void }) {
+function LastAudit({ result, freshness, onView }: { result: AuditResult; freshness: FreshnessState; onView: () => void }) {
   const counts = countBySeverity(result.issues);
   const score = result.compliance.score;
   const stale = freshness === 'changed';
@@ -93,14 +92,7 @@ function LastAudit({ result, freshness, onView, onRun }: { result: AuditResult; 
         </span>
       </div>
       <FreshnessLine freshness={freshness} />
-      {stale ? (
-        <div class="last-audit-actions">
-          <button class="btn primary full" onClick={onRun}>Run audit</button>
-          <button class="link small" onClick={onView}>View old results</button>
-        </div>
-      ) : (
-        <button class="btn secondary full" onClick={onView}>View audit</button>
-      )}
+      <button class="btn secondary full" onClick={onView}>View results</button>
     </div>
   );
 }
@@ -112,7 +104,7 @@ function FreshnessLine({ freshness }: { freshness: FreshnessState }) {
     case 'current':
       return <p class="freshness ok small">✓ Matches the current design</p>;
     case 'changed':
-      return <p class="freshness changed small" role="status"><strong>Design has changed since this audit</strong></p>;
+      return <p class="freshness changed small" role="status"><strong>Design has changed since this audit.</strong> Run the audit again to update it.</p>;
     case 'unverified':
       return <p class="freshness muted small">Can’t confirm this is current (large page). Re-run to be sure.</p>;
   }

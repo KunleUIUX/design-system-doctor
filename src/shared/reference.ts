@@ -147,14 +147,21 @@ export function migrateToReference(ds: DesignSystemConfig): DesignSystemReferenc
 
 export const emptyAlsoAccept = () => ({ textStyles: { ...NONE }, paintStyles: { ...NONE }, components: { ...NONE } });
 
-/** Short description of where a design system came from, for the UI. */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "2 Oct 2026", the same in every locale. */
+export function formatDay(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/** Where a design system came from, in the user's words (no capture/reference/key terminology). */
 export function describeSource(r: DesignSystemReference): string {
-  const date = r.capturedAt ? new Date(r.capturedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const day = r.capturedAt ? ` · ${formatDay(r.capturedAt)}` : '';
   switch (r.source.kind) {
-    case 'library-file': return `Captured from “${r.source.fileName ?? 'library file'}”${date ? ` on ${date}` : ''}`;
-    case 'file-local': return `Captured from this file’s own styles${date ? ` on ${date}` : ''}`;
-    case 'in-use': return 'Built from assets used on a page';
-    case 'migrated': return 'Set up with an earlier version';
+    case 'library-file': return `Saved from ${r.source.fileName ?? 'a library file'}${day}`;
+    case 'file-local': return `Only works in ${r.source.fileName ?? 'the file it was saved from'}`;
+    case 'in-use': return 'Created from a page';
+    case 'migrated': return 'Saved settings';
   }
 }
 

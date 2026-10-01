@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createController } from '../src/plugin/controller';
 import { memoryStorage } from '../src/plugin/storage';
-import { referenceFromSelection, toSelection } from '../src/shared/reference';
+import { applySelection, referenceFromSelection, toSelection } from '../src/shared/reference';
+import { auditedName } from '../src/ui/presentation';
 import { DEFAULT_SETTINGS } from '../src/shared/types';
 import type { MainToUi } from '../src/shared/messages';
 import { auditConfig } from './fixtures';
@@ -206,4 +207,137 @@ describe('design system persistence', () => {
     expect(result.issues.map((i) => `${i.ruleId} ${i.nodeId}`)).toEqual(['color/raw-matches-token 9:2']);
     expect(result.coverage?.tokens).toEqual({ total: 1, live: 1, captured: 0, unavailable: 0 });
   });
+
+  describe('saved design systems: rename and remove', () => {
+    const named = (name: string, key: string) =>
+      referenceFromSelection({ ...auditConfig().designSystem!, name, textStyles: { library: false, local: false, items: [{ source: 'library', key, name: 'Body' }] } }, 'in-use');
+    const twoSaved = async () => {
+      const device = { library: [] };
+      const c = createController({ post: (m) => sent.push(m), storage: memoryStorage(null, device) });
+      const rayna = named('Rayna UI', 'rayna-body');
+      const m3 = named('Material 3', 'm3-body');
+      await c.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, designSystem: rayna } });
+      await c.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, designSystem: m3 } }); // Material 3 selected
+      sent = [];
+      return { c, device, rayna, m3 };
+    };
+    const lastUpdate = () => ofType('library-updated').slice(-1)[0];
+
+    it('renames a saved design system, and the selected one keeps its id and stays selected', async () => {
+      const { c, device, m3 } = await twoSaved();
+      await c.handle({ type: 'rename-design-system', id: m3.id, name: '  Material 3 (2026)  ' });
+      const u = lastUpdate();
+      expect(u.settings.designSystem).toMatchObject({ id: m3.id, name: 'Material 3 (2026)' });
+      expect(u.library.find((r) => r.id === m3.id)?.name).toBe('Material 3 (2026)');
+      expect((device.library as { id: string; name: string }[]).find((r) => r.id === m3.id)?.name).toBe('Material 3 (2026)');
+      expect(ofType('settings-saved')).toEqual([]); // renaming doesn't count as choosing a design system
+    });
+
+    it('switching after a rename selects the renamed system, whole', async () => {
+      const { c, rayna } = await twoSaved();
+      await c.handle({ type: 'rename-design-system', id: rayna.id, name: 'Rayna UI v2' });
+      await c.handle({ type: 'switch-design-system', id: rayna.id });
+      const selected = ofType('settings-saved').slice(-1)[0].settings.designSystem!;
+      expect(selected).toEqual({ ...rayna, name: 'Rayna UI v2' });
+    });
+
+    it('removing another system keeps the selected one', async () => {
+      const { c, rayna, m3 } = await twoSaved();
+      await c.handle({ type: 'remove-design-system', id: rayna.id });
+      const u = lastUpdate();
+      expect(u.settings.designSystem?.id).toBe(m3.id);
+      expect(u.library.map((r) => r.name)).toEqual(['Material 3']);
+    });
+
+    it('removing the selected system leaves none selected, so the user chooses again', async () => {
+      const { c, rayna, m3 } = await twoSaved();
+      await c.handle({ type: 'remove-design-system', id: m3.id });
+      const u = lastUpdate();
+      expect(u.settings.designSystem).toBeNull();
+      expect(u.library.map((r) => r.id)).toEqual([rayna.id]);
+      sent = [];
+      await c.handle({ type: 'run-audit', scope: 'page' });
+      expect(ofType('audit-error')[0]).toMatchObject({ kind: 'no-design-system' });
+    });
+
+    it('ignores an empty name', async () => {
+      const { c, m3 } = await twoSaved();
+      await c.handle({ type: 'rename-design-system', id: m3.id, name: '   ' });
+      expect(lastUpdate()).toBeUndefined();
+    });
+  });
+
+  describe('renaming the selected design system keeps its last audit', () => {
+    const tokens = { source: 'local' as const, id: 'C:ds', name: 'Tokens' };
+    const audited = async () => {
+      const c = createController({ post: (m) => sent.push(m), storage: memoryStorage(null, { library: [] }) });
+      const rayna = referenceFromSelection({ ...auditConfig().designSystem!, name: 'Rayna UI', variableCollections: [tokens] }, 'in-use');
+      await c.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, designSystem: rayna } });
+      await c.handle({ type: 'run-audit', scope: 'page' });
+      const result = ofType('audit-result').slice(-1)[0].result;
+      return { c, rayna, result: JSON.parse(JSON.stringify(result)) as typeof result };
+    };
+    const freshness = async (c: ReturnType<typeof createController>) => {
+      await c.handle({ type: 'check-freshness' });
+      return ofType('audit-freshness').slice(-1)[0]?.state;
+    };
+
+    it('stays current, with the same findings and score, and shows the new name', async () => {
+      const { c, rayna, result } = await audited();
+      expect(result.issues).toHaveLength(1);
+      expect(await freshness(c)).toBe('current');
+
+      await c.handle({ type: 'rename-design-system', id: rayna.id, name: 'Rayna Design System' });
+      expect(await freshness(c)).toBe('current');
+
+      sent = [];
+      await c.handle({ type: 'init' }); // reopen: the stored last audit is untouched
+      const { lastAudit, settings } = ofType('init-state')[0];
+      expect(lastAudit).toEqual(result);
+      expect(settings.designSystem).toMatchObject({ id: rayna.id, name: 'Rayna Design System' });
+      expect(auditedName(lastAudit!, settings.designSystem)).toBe('Rayna Design System');
+      expect(ofType('audit-freshness').slice(-1)[0]?.state).toBe('current');
+
+      // Running it again gives the identical result: the name was never part of it.
+      await c.handle({ type: 'run-audit', scope: 'page' });
+      const rerun = ofType('audit-result').slice(-1)[0].result;
+      expect(rerun.fingerprint).toBe(result.fingerprint);
+      expect(rerun.compliance).toEqual(result.compliance);
+      expect(rerun.issues).toEqual(result.issues);
+    });
+
+    it('still goes out of date when the design system itself changes', async () => {
+      const changes: [string, (ds: ReturnType<typeof referenceFromSelection>) => ReturnType<typeof referenceFromSelection>][] = [
+        ['reference assets', (ds) => applySelection(ds, { ...toSelection(ds), variableCollections: [] })],
+        ['spacing scale', (ds) => ({ ...ds, spacingScale: [0, 8] })],
+        ['corner-radius scale', (ds) => ({ ...ds, radiusScale: [0, 2] })],
+      ];
+      for (const [, change] of changes) {
+        sent = [];
+        const { c, rayna } = await audited();
+        await c.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, designSystem: change(rayna) } });
+        expect(ofType('audit-freshness').slice(-1)[0]?.state).toBe('changed');
+      }
+      for (const options of [{ disabledRules: ['color/raw-matches-token'] }, { ignoredNodeIds: ['9:2'] }, { includeHidden: true }]) {
+        sent = [];
+        const { c, rayna } = await audited();
+        await c.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, ...options, designSystem: rayna } });
+        expect(ofType('audit-freshness').slice(-1)[0]?.state).toBe('changed');
+      }
+    });
+  });
+
+  it('saving the same library again updates that design system in place', async () => {
+    const device = { library: [] };
+    const c = createController({ post: (m) => sent.push(m), storage: memoryStorage(null, device) });
+    await c.handle({ type: 'init' });
+    await c.handle({ type: 'capture-design-system' });
+    const first = ofType('settings-saved').slice(-1)[0].settings.designSystem!;
+    await c.handle({ type: 'rename-design-system', id: first.id, name: 'Acme' });
+    await c.handle({ type: 'capture-design-system' });
+    const again = ofType('settings-saved').slice(-1)[0];
+    expect(again.settings.designSystem).toMatchObject({ id: first.id, name: 'Acme', source: { kind: 'library-file' } });
+    expect(again.library.map((r) => r.id)).toEqual([first.id]);
+  });
 });
+

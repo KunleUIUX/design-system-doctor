@@ -311,7 +311,10 @@ export interface AuditResult {
   failedNodeCount: number;
   issues: AuditIssue[];
   compliance: ScoreBreakdown;
+  /** The design system's name when the audit ran. Shown only if it's no longer the selected one. */
   designSystemName: string;
+  /** Which saved design system was used, so a later rename shows the new name. Absent on older results. */
+  designSystemId?: string;
   /** Approved sources that couldn't be read in this file; checks depending on them are unverifiable. */
   unresolvedSources?: AssetRef[];
   /** How completely the selected design system could be read or checked from captured values. */

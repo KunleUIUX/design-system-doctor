@@ -208,11 +208,38 @@ export function createController({ post, storage }: ControllerDeps) {
               post({ type: 'capture-failed', message: 'This file has no styles, variables or components of its own to capture. Open the design system’s library file and capture it there.' });
               break;
             }
-            await commit({ ...settings, designSystem: captured });
+            // Saving the same library again updates that design system (same id, name and settings).
+            const previous = library.find((r) => r.source.kind === 'library-file' && !!r.source.fileName && r.source.fileName === captured.source.fileName);
+            const next = previous
+              ? { ...captured, id: previous.id, name: previous.name, spacingScale: previous.spacingScale, radiusScale: previous.radiusScale, alsoAccept: previous.alsoAccept }
+              : captured;
+            await commit({ ...settings, designSystem: next });
           } catch (e) {
             console.error('[Design System Doctor] capture failed', e);
             post({ type: 'capture-failed', message: 'Couldn’t read this file’s styles, variables and components.' });
           }
+          break;
+        }
+        case 'rename-design-system': {
+          const name = msg.name.trim();
+          if (!name || !library.some((r) => r.id === msg.id)) break;
+          library = library.map((r) => (r.id === msg.id ? { ...r, name } : r));
+          await storage.saveLibrary(library);
+          if (settings.designSystem?.id === msg.id) {
+            settings = { ...settings, designSystem: { ...settings.designSystem, name } };
+            await storage.saveSettings(settings);
+          }
+          post({ type: 'library-updated', settings, library });
+          break;
+        }
+        case 'remove-design-system': {
+          library = library.filter((r) => r.id !== msg.id);
+          await storage.saveLibrary(library);
+          if (settings.designSystem?.id === msg.id) {
+            settings = { ...settings, designSystem: null };
+            await storage.saveSettings(settings);
+          }
+          post({ type: 'library-updated', settings, library });
           break;
         }
       }
