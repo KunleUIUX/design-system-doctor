@@ -64,19 +64,27 @@ helpers) against real nodes in Figma files through the Figma MCP `use_figma` too
 node dev/e2e/build.mjs
 ```
 
-`use_figma` accepts at most 50,000 characters, so the bundle is installed once per file and each
-scenario stays small:
+`use_figma` accepts at most 50,000 characters per call, and the bundle is larger than that, so it
+is split into parts (each well under the limit) that are installed once per file:
 
-1. Run `dev/e2e/install-<host>.generated.js` in the target file. It stores the bundle in shared
-   plugin data on the scenario's host page (the `// @host <nodeId>` line at the top of each
-   scenario). Re-run it whenever the build prints a new checksum.
-2. Run any `dev/e2e/<scenario>.generated.js`. It checks the installed bundle's checksum first.
+1. Run each `dev/e2e/install-<host>-<i>of<n>.generated.js` in the target file. Each stores one
+   checksummed part in shared plugin data on the scenario's host page (the `// @host <nodeId>` line
+   at the top of each scenario). Re-run them whenever the build prints a new checksum.
+2. Run any `dev/e2e/<scenario>.generated.js`. It joins the parts and checks the whole bundle's
+   checksum first. Errors and warnings the plugin code logs are returned as `consoleErrors`.
+
+`use_figma`'s host lacks two APIs the plugin runtime has: `figma.loadAllPagesAsync` and styles'
+`getPublishStatusAsync`. The loader supplies the first by loading each page. For the second, a
+scenario must say how it knows (see `capture-library.js`, which uses the keys proven published in
+`library-keys.json`). The plugin code itself is unchanged.
 
 | Scenario | File | Covers |
 |---|---|---|
 | `trust`, `validate`, `edge-cases`, `fix-and-reaudit` | Deign-Page, `DSD – core loop test` (host `45:2`) | accuracy, freshness, confidence, consolidation, edge cases, fix → re-audit |
 | `library`, `config-consumer1`, `config-large` | DSD Library Consumer (host `1:15`) | published library assets, configuration flow, 3,601-layer timing |
-| `config-consumer2` | DSD Library Consumer 2 (host `0:1`) | cross-file reuse by library key |
+| `config-consumer2` | DSD Library Consumer 2 (host `0:1`) | selecting another file's design system as a whole; identity by library key |
+| `capture-library` | DSD Test Library (host `0:1`) | "Save this file as a design system" in the library's own file; writes `captured-dsd-test-library.generated.json` |
+| `reference-lifecycle` | DSD Library Consumer (host `1:15`) | migrated settings, audit against captured values, switch to a second design system with no leaks, switch back |
 | `audit-and-navigate`, `reaudit` | Deign-Page | Phase-1 core loop (legacy) |
 
 Scenarios never touch pages other than their test page. Library keys live in

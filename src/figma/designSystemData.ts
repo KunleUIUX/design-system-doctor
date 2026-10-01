@@ -128,6 +128,7 @@ export async function loadDesignSystemData(
     remote: c.remote,
     defaultModeId: c.defaultModeId,
     variableCount: c.variableIds.length,
+    ...(c.modes ? { modes: c.modes.map((m) => ({ id: m.modeId, name: m.name })) } : {}),
   }));
 
   // ── Components ──────────────────────────────────────────────────────────
@@ -155,7 +156,7 @@ export async function loadDesignSystemData(
   };
 }
 
-function isAlias(v: VariableValue): v is VariableAlias {
+export function isAlias(v: VariableValue): v is VariableAlias {
   return typeof v === 'object' && v !== null && 'type' in v && v.type === 'VARIABLE_ALIAS';
 }
 
@@ -167,7 +168,7 @@ function safeSignature(c: ComponentNode): string | undefined {
   }
 }
 
-function toTextStyleInfo(s: TextStyle): TextStyleInfo {
+export function toTextStyleInfo(s: TextStyle): TextStyleInfo {
   return {
     id: s.id,
     key: s.key,
@@ -181,7 +182,7 @@ function toTextStyleInfo(s: TextStyle): TextStyleInfo {
   };
 }
 
-function toPaintStyleInfo(s: PaintStyle): PaintStyleInfo {
+export function toPaintStyleInfo(s: PaintStyle): PaintStyleInfo {
   const visible = s.paints.filter((p) => p.visible !== false);
   const info: PaintStyleInfo = { id: s.id, key: s.key, name: s.name, remote: s.remote };
   if (visible.length === 1 && visible[0].type === 'SOLID') {

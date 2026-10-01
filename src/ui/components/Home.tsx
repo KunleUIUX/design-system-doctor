@@ -1,15 +1,19 @@
 import type { AuditScope } from '../../shared/messages';
-import type { AuditConfig, AuditResult } from '../../shared/types';
+import { describeSource } from '../../shared/reference';
+import type { AuditResult, PluginSettings } from '../../shared/types';
 import { ConfidenceNote, Footer, Header, SeverityDot, countBySeverity, formatWhen, plural, type FreshnessState } from './common';
 
 interface Props {
-  config: AuditConfig;
+  settings: PluginSettings;
   pageName: string;
   selectionCount: number;
   scope: AuditScope;
   onScope: (s: AuditScope) => void;
   onRun: (scope: AuditScope) => void;
-  onConfigure: () => void;
+  /** Change the active design system's settings. */
+  onEdit: () => void;
+  /** Replace it with another design system. */
+  onSwitch: () => void;
   lastResult: AuditResult | null;
   freshness: FreshnessState;
   onShowResults: () => void;
@@ -17,7 +21,8 @@ interface Props {
   sessionOnly?: boolean;
 }
 
-export function Home({ config, pageName, selectionCount, scope, onScope, onRun, onConfigure, lastResult, freshness, onShowResults, sessionOnly }: Props) {
+export function Home({ settings, pageName, selectionCount, scope, onScope, onRun, onEdit, onSwitch, lastResult, freshness, onShowResults, sessionOnly }: Props) {
+  const ds = settings.designSystem!;
   const effectiveScope = scope === 'selection' && selectionCount === 0 ? 'page' : scope;
   return (
     <div class="screen">
@@ -36,8 +41,14 @@ export function Home({ config, pageName, selectionCount, scope, onScope, onRun, 
         <div class="field">
           <span class="label">Design system</span>
           <div class="row-between boxed">
-            <span>{config.designSystem!.name}</span>
-            <button class="link" onClick={onConfigure}>Edit</button>
+            <span class="ds-current">
+              <span>{ds.name}</span>
+              <span class="muted small">{describeSource(ds)}</span>
+            </span>
+            <span class="ds-actions">
+              <button class="link" onClick={onEdit}>Edit</button>
+              <button class="link" onClick={onSwitch}>Switch</button>
+            </span>
           </div>
           {sessionOnly && <span class="muted small">This file is view-only, so these settings last until you close the plugin.</span>}
         </div>

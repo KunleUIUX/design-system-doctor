@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { AuditErrorKind, AuditPhase, AuditScope, Discovery, MainToUi } from '../shared/messages';
-import type { AuditCategory, AuditConfig, AuditResult, DesignSystemConfig } from '../shared/types';
+import { applySelection, hasCapturedValues, referenceFromSelection, toSelection, type DesignSystemReference } from '../shared/reference';
+import type { AuditCategory, AuditConfig, AuditResult, PluginSettings } from '../shared/types';
 import { send, useMainMessages } from './bridge';
 import { CategoryView } from './components/CategoryView';
 import { Configure } from './components/Configure';
@@ -9,6 +10,7 @@ import { IssueDetail } from './components/IssueDetail';
 import { Progress } from './components/Progress';
 import { Results } from './components/Results';
 import { ConfirmLarge, ErrorState, NoDesignSystem } from './components/States';
+import { SwitchDesignSystem } from './components/SwitchDesignSystem';
 import type { FreshnessState } from './components/common';
 
 export interface ProgressState {
@@ -27,7 +29,9 @@ export interface NavStatus {
 type View =
   | { name: 'loading' }
   | { name: 'home' }
-  | { name: 'configure' }
+  /** `edit` changes the active design system; `new` creates one from this page and replaces it. */
+  | { name: 'configure'; mode: 'edit' | 'new' }
+  | { name: 'switch' }
   | { name: 'confirm-large'; layerCount: number; scope: AuditScope }
   | { name: 'running' }
   | { name: 'results' }
@@ -42,7 +46,11 @@ export function App() {
     viewRef.current = v;
     setViewState(v);
   };
-  const [config, setConfig] = useState<AuditConfig | null>(null);
+  /** Stored settings: the selected design system as a whole reference, plus audit options. */
+  const [settings, setSettings] = useState<PluginSettings | null>(null);
+  /** Design systems saved on this device. */
+  const [library, setLibrary] = useState<DesignSystemReference[]>([]);
+  const [capture, setCapture] = useState<{ busy: boolean; message?: string }>({ busy: false });
   const [pageName, setPageName] = useState('');
   const [selectionCount, setSelectionCount] = useState(0);
   const [scope, setScope] = useState<AuditScope>('page');
@@ -52,9 +60,6 @@ export function App() {
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   const [navStatus, setNavStatus] = useState<NavStatus | null>(null);
   const [resolvedCount, setResolvedCount] = useState(0);
-  /** Library-only design system saved in another file on this device. */
-  const [portable, setPortable] = useState<DesignSystemConfig | null>(null);
-  const [configureFrom, setConfigureFrom] = useState<DesignSystemConfig | null>(null);
   const [sessionOnly, setSessionOnly] = useState(false);
   const [freshness, setFreshness] = useState<FreshnessState>('current');
   /** The audit whose freshness reports we accept; reports for any other audit are ignored. */
@@ -71,10 +76,10 @@ export function App() {
   const onMessage = useCallback((msg: MainToUi) => {
     switch (msg.type) {
       case 'init-state':
-        setConfig(msg.config);
+        setSettings(msg.settings);
+        setLibrary(msg.library);
         setPageName(msg.pageName);
         setSelectionCount(msg.selectionCount);
-        setPortable(msg.portable);
         show(msg.lastAudit, msg.lastAudit ? 'checking' : 'current');
         setView({ name: 'home' });
         break;
@@ -120,9 +125,18 @@ export function App() {
       case 'discovery':
         setDiscovery(msg.discovery);
         break;
-      case 'config-saved':
-        setConfig(msg.config);
+      case 'settings-saved':
+        setSettings(msg.settings);
+        setLibrary(msg.library);
         setSessionOnly(msg.savedTo === 'session');
+        // A design system was chosen or captured: back to the start, ready to audit.
+        if (viewRef.current.name === 'switch') {
+          setCapture({ busy: false });
+          setView({ name: 'home' });
+        }
+        break;
+      case 'capture-failed':
+        setCapture({ busy: false, message: msg.message });
         break;
     }
   }, []);
@@ -142,17 +156,32 @@ export function App() {
     send({ type: 'run-audit', scope: s, confirmedLarge });
   };
 
-  const openConfigure = (from: DesignSystemConfig | null = null) => {
-    setConfigureFrom(from);
+  const openConfigure = (mode: 'edit' | 'new') => {
     setDiscovery(null);
     send({ type: 'get-discovery' });
-    setView({ name: 'configure' });
+    setView({ name: 'configure', mode });
   };
 
-  const saveConfig = (next: AuditConfig) => {
-    send({ type: 'save-config', config: next });
-    setConfig(next);
+  const saveSettings = (next: PluginSettings) => {
+    send({ type: 'save-settings', settings: next });
+    setSettings(next);
+  };
+
+  /** The settings screen edits the selection shape; turn it back into a whole design system. */
+  const saveConfigure = (mode: 'edit' | 'new', next: AuditConfig) => {
+    if (!settings || !next.designSystem) return;
+    const { designSystem: selection, ...options } = next;
+    const designSystem =
+      mode === 'edit' && settings.designSystem
+        ? applySelection(settings.designSystem, selection)
+        : referenceFromSelection(selection, 'in-use'); // new: nothing from the previous design system is kept
+    saveSettings({ ...options, designSystem });
     setView({ name: 'home' });
+  };
+
+  const captureFile = () => {
+    setCapture({ busy: true });
+    send({ type: 'capture-design-system' });
   };
 
   const goToLayer = (nodeId: string) => {
@@ -161,41 +190,61 @@ export function App() {
   };
 
   const ignoreNode = (nodeId: string) => {
-    if (!config || !result) return;
-    const next = { ...config, ignoredNodeIds: [...new Set([...config.ignoredNodeIds, nodeId])] };
-    send({ type: 'save-config', config: next });
-    setConfig(next);
+    if (!settings || !result) return;
+    saveSettings({ ...settings, ignoredNodeIds: [...new Set([...settings.ignoredNodeIds, nodeId])] });
     // Hide it immediately; the score is recalculated on the next run.
     setResult({ ...result, issues: result.issues.filter((i) => i.nodeId !== nodeId) });
     setFreshness('changed'); // settings changed, so the score shown is no longer what a run would give
     setView({ name: 'results' });
   };
 
-  if (!config || view.name === 'loading') return <div class="center muted">Loading…</div>;
+  if (!settings || view.name === 'loading') return <div class="center muted">Loading…</div>;
 
-  if (!config.designSystem && view.name !== 'configure') {
+  const switchScreen = (
+    <SwitchDesignSystem
+      library={library}
+      activeId={settings.designSystem?.id ?? null}
+      capture={capture}
+      onUse={(id) => send({ type: 'switch-design-system', id })}
+      onCreateFromPage={() => openConfigure('new')}
+      onCapture={captureFile}
+      onBack={() => {
+        setCapture({ busy: false });
+        setView({ name: 'home' });
+      }}
+    />
+  );
+
+  if (!settings.designSystem && view.name !== 'configure') {
+    if (view.name === 'switch') return switchScreen;
     return (
       <NoDesignSystem
         discovery={discovery}
-        portable={portable}
+        savedCount={library.length}
         onMount={() => send({ type: 'get-discovery' })}
-        onConfigure={() => openConfigure()}
-        onUsePortable={() => openConfigure(portable)}
+        onChoose={() => setView({ name: 'switch' })}
+        onCreateFromPage={() => openConfigure('new')}
       />
     );
   }
+  /** The engine-facing view of the settings, which the settings screen edits. */
+  const config: AuditConfig = { ...settings, designSystem: settings.designSystem ? toSelection(settings.designSystem) : null };
 
   switch (view.name) {
     case 'home':
       return (
         <Home
-          config={config}
+          settings={settings}
           pageName={pageName}
           selectionCount={selectionCount}
           scope={scope}
           onScope={setScope}
           onRun={(s) => run(s)}
-          onConfigure={() => openConfigure()}
+          onEdit={() => openConfigure('edit')}
+          onSwitch={() => {
+            setCapture({ busy: false });
+            setView({ name: 'switch' });
+          }}
           sessionOnly={sessionOnly}
           lastResult={result}
           freshness={freshness}
@@ -205,16 +254,22 @@ export function App() {
           }}
         />
       );
-    case 'configure':
+    case 'switch':
+      return switchScreen;
+    case 'configure': {
+      const editing = view.mode === 'edit' && !!settings.designSystem;
       return (
         <Configure
-          config={config}
+          key={view.mode}
+          // A new design system starts from this page's suggestion, never from the current one.
+          config={editing ? config : { ...config, designSystem: null }}
           discovery={discovery}
-          initial={configureFrom}
-          onSave={saveConfig}
-          onCancel={config.designSystem ? () => setView({ name: 'home' }) : undefined}
+          captured={editing && settings.designSystem && hasCapturedValues(settings.designSystem) ? settings.designSystem : null}
+          onSave={(next) => saveConfigure(view.mode, next)}
+          onCancel={settings.designSystem ? () => setView({ name: 'home' }) : () => setView({ name: 'switch' })}
         />
       );
+    }
     case 'confirm-large':
       return (
         <ConfirmLarge

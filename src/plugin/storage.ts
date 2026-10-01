@@ -1,29 +1,37 @@
-// Where settings and the last audit live.
+// Where settings, saved design systems and the last audit live.
 //
-// - The design system + audit settings are stored in THIS FILE's plugin data (shared with
-//   collaborators, travels with the file). They may contain file-specific ids (local assets,
-//   ignored layers), so they are never written anywhere that other files would read.
-// - A portable copy of the design system (library refs by key, switches, scales; see
-//   toPortable) is kept on this device so it can be offered to other files. It contains no
-//   file-specific ids.
-// - Earlier versions fell back to a device-wide `clientStorage['dsd-config-v1']` when a file was
-//   read-only, which leaked one file's ids into every other file. That key is no longer read.
+// - THIS FILE's plugin data holds the settings: the selected design system (a whole reference)
+//   and audit options. It travels with the file and is shared with collaborators.
+// - THIS DEVICE keeps a list of saved design systems, so one captured or set up in one file can be
+//   selected in another. Selecting is always explicit; nothing is applied silently.
+// - Older keys are only read, for migration, and never deleted (rollback stays possible):
+//   `dsd-config-v1` (selection-based settings in the file) and `dsd-portable-design-system-v1`
+//   (its device copy). The old device-wide `clientStorage['dsd-config-v1']` fallback leaked one
+//   file's ids into others and is never read.
 
-import type { AuditConfig, AuditResult, DesignSystemConfig } from '../shared/types';
+import type { DesignSystemReference } from '../shared/reference';
+import type { AuditConfig, AuditResult, DesignSystemConfig, PluginSettings } from '../shared/types';
 
 export interface PluginStorage {
-  /** Raw saved settings for this file (may be an older shape; the controller migrates it). */
-  loadConfig(): Promise<Partial<AuditConfig> | null>;
-  /** `session` when the file can't store plugin data (view-only): settings last until close. */
-  saveConfig(config: AuditConfig): Promise<'file' | 'session'>;
-  loadPortable(): Promise<DesignSystemConfig | null>;
-  savePortable(ds: DesignSystemConfig): Promise<void>;
+  /** Saved settings for this file in the current shape, or null. */
+  loadSettings(): Promise<PluginSettings | null>;
+  /** `session` when the file can't store plugin data (view-only, or too large): settings last until close. */
+  saveSettings(settings: PluginSettings): Promise<'file' | 'session'>;
+  /** Older selection-based settings for this file, for migration. */
+  loadLegacyConfig(): Promise<Partial<AuditConfig> | null>;
+  /** Design systems saved on this device. */
+  loadLibrary(): Promise<DesignSystemReference[]>;
+  saveLibrary(list: DesignSystemReference[]): Promise<void>;
+  /** The older device copy of a design system, for migration. */
+  loadLegacyPortable(): Promise<DesignSystemConfig | null>;
   loadLastAudit(page: PageNode): AuditResult | null;
   saveLastAudit(page: PageNode, result: AuditResult): void;
 }
 
-const CONFIG_KEY = 'dsd-config-v1';
-const PORTABLE_KEY = 'dsd-portable-design-system-v1';
+const SETTINGS_KEY = 'dsd-settings-v3';
+const LEGACY_CONFIG_KEY = 'dsd-config-v1';
+const LIBRARY_KEY = 'dsd-design-systems-v1';
+const LEGACY_PORTABLE_KEY = 'dsd-portable-design-system-v1';
 const LAST_AUDIT_KEY = 'dsd-last-audit-v1';
 /** Plugin data is stored in the file; keep very large results out of it. */
 const LAST_AUDIT_MAX_BYTES = 500_000;
@@ -38,22 +46,29 @@ const parse = <T>(raw: string | undefined | null): T | null => {
 };
 
 export const pluginDataStorage: PluginStorage = {
-  async loadConfig() {
-    return parse<Partial<AuditConfig>>(figma.root.getPluginData(CONFIG_KEY));
+  async loadSettings() {
+    return parse<PluginSettings>(figma.root.getPluginData(SETTINGS_KEY));
   },
-  async saveConfig(config) {
+  async saveSettings(settings) {
     try {
-      figma.root.setPluginData(CONFIG_KEY, JSON.stringify(config));
+      figma.root.setPluginData(SETTINGS_KEY, JSON.stringify(settings));
       return 'file';
     } catch {
       return 'session';
     }
   },
-  async loadPortable() {
-    return (await figma.clientStorage.getAsync(PORTABLE_KEY).catch(() => null)) ?? null;
+  async loadLegacyConfig() {
+    return parse<Partial<AuditConfig>>(figma.root.getPluginData(LEGACY_CONFIG_KEY));
   },
-  async savePortable(ds) {
-    await figma.clientStorage.setAsync(PORTABLE_KEY, ds).catch(() => undefined);
+  async loadLibrary() {
+    const list = await figma.clientStorage.getAsync(LIBRARY_KEY).catch(() => null);
+    return Array.isArray(list) ? (list as DesignSystemReference[]) : [];
+  },
+  async saveLibrary(list) {
+    await figma.clientStorage.setAsync(LIBRARY_KEY, list).catch(() => undefined);
+  },
+  async loadLegacyPortable() {
+    return (await figma.clientStorage.getAsync(LEGACY_PORTABLE_KEY).catch(() => null)) ?? null;
   },
   loadLastAudit(page) {
     try {
@@ -73,17 +88,26 @@ export const pluginDataStorage: PluginStorage = {
 };
 
 /**
- * In-memory storage for tests and real-file checks. `files` simulates separate Figma files: each
- * file id gets its own settings, while the portable copy is shared like device storage.
+ * In-memory storage for tests and real-file checks. `initial` is this file's saved settings,
+ * either current (a reference) or the older selection shape. `device` is shared like device
+ * storage, so several controllers can simulate separate files on one machine.
  */
-export function memoryStorage(config: Partial<AuditConfig> | null, device: { portable: DesignSystemConfig | null } = { portable: null }): PluginStorage {
-  let saved: Partial<AuditConfig> | null = config;
+export function memoryStorage(
+  initial: Partial<AuditConfig> | PluginSettings | null,
+  device: { library: DesignSystemReference[]; portable?: DesignSystemConfig | null } = { library: [] },
+): PluginStorage {
+  const isCurrent = (x: unknown): x is PluginSettings => !!x && !!(x as PluginSettings).designSystem && (x as { designSystem: { schema?: number } }).designSystem.schema === 1;
+  let settings: PluginSettings | null = isCurrent(initial) ? initial : null;
+  const legacy = isCurrent(initial) ? null : initial;
   const audits = new Map<string, AuditResult>();
+  const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
   return {
-    loadConfig: async () => (saved ? JSON.parse(JSON.stringify(saved)) : null),
-    saveConfig: async (next) => ((saved = JSON.parse(JSON.stringify(next))), 'file'),
-    loadPortable: async () => device.portable,
-    savePortable: async (ds) => void (device.portable = JSON.parse(JSON.stringify(ds))),
+    loadSettings: async () => (settings ? copy(settings) : null),
+    saveSettings: async (next) => ((settings = copy(next)), 'file'),
+    loadLegacyConfig: async () => (legacy ? copy(legacy) : null),
+    loadLibrary: async () => copy(device.library ?? []),
+    saveLibrary: async (list) => void (device.library = copy(list)),
+    loadLegacyPortable: async () => device.portable ?? null,
     loadLastAudit: (page) => audits.get(page.id) ?? null,
     saveLastAudit: (page, result) => void audits.set(page.id, result),
   };

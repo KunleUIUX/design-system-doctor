@@ -3,6 +3,53 @@
 How Design System Doctor knows what "the design system" is, how that choice is stored, and how it
 behaves across files. Everything below was checked against real Figma files (see §8), not assumed.
 
+## 0. Design system reference (Phase 1, 2026-10-01)
+
+The product promise: *a designer selects the design system they used, and Doctor checks whether
+their page follows it.* A design system is therefore selected **as a whole**, as a
+`DesignSystemReference` (`src/shared/reference.ts`), not rebuilt from individual assets.
+
+```
+Selected DesignSystemReference ─► prepareReference ─► live / captured / unavailable data ─► existing resolver ─► rules ─► findings, score
+```
+
+* **What a reference holds:** name, source (`library-file`, `file-local`, `in-use` or
+  `migrated`), capture date, and the listed variable collections (with variables), text styles,
+  colour styles and components. Library assets are listed by published key, local ones by id, with
+  captured values where known. It also holds the spacing and radius scales.
+* **Ways to create one:**
+  * **"Save this file as a design system"** (`src/figma/capture.ts`), run in the design system's
+    own file. It records every local style, variable and component with its values. Published
+    assets are recorded by key, unpublished ones by id. It is read-only and imports nothing.
+  * **"Create from this page"** lists exactly what the page uses. It's partial, with no values.
+  * Older settings are migrated automatically (§1).
+* **`prepareReference`** (`src/engine/prepareReference.ts`) handles each listed asset in order:
+  * **readable in this file:** live data is used. Live always wins. Inside the library's own file,
+    a library entry matches the local asset with the same key.
+  * **not readable, but captured:** the captured values are added to the data under the name
+    "… (captured)", so findings that rely on them say so. Captured colour values only apply in
+    modes matched **by name**.
+  * **neither:** the asset stays out. The existing logic reports it as unresolved, and dependent
+    checks are "Not verifiable".
+
+  Nothing is guessed. IDs are never parsed for keys, and nothing is imported.
+* **Rules, scoring, "Go to layer" and freshness are unchanged.** The engine still receives an
+  approval set plus data; the fingerprint includes the captured data.
+* **Switch vs edit:**
+  * **Switch** replaces the design system completely. Nothing from the previous one is kept.
+  * **Edit** changes the selected one: name, scales, options, and items for non-captured design
+    systems. Items it keeps keep their captured values.
+* **"All … from your libraries"** is now **"Also accept … from any other library"**. It's off for
+  new design systems, so a selected design system is the reference rather than "any library".
+  Migrated settings keep their switches so they behave exactly as before.
+* **Coverage:** every result records, per kind of asset, how many were read here, taken from
+  captured values, or unavailable. The results screen shows it.
+* **Migration:**
+  * The older `DesignSystemConfig` becomes a `migrated` reference with a content-derived id. Its
+    `toSelection` reproduces the original exactly, key order included.
+  * Audits, scores and fingerprints are therefore unchanged; tested in `test/reference.test.ts`.
+  * Old keys are read, never deleted.
+
 ## 1. The model
 
 A design system is a **list of sources the designer approved**. Doctor never infers one: until
@@ -72,18 +119,19 @@ Names are stored for display only and never used for matching.
 
 | What | Where | Scope |
 |---|---|---|
-| Settings (design system, disabled rules, options) | `figma.root` plugin data, key `dsd-config-v1` | This file, for everyone who opens it with the plugin |
+| Settings (selected design system reference, disabled rules, options) | `figma.root` plugin data, key `dsd-settings-v3` | This file, for everyone who opens it with the plugin |
 | Last audit per page | page plugin data, key `dsd-last-audit-v1` (≤ 500 KB) | That page |
-| Portable design system | `figma.clientStorage`, key `dsd-portable-design-system-v1` | This device/user, all files |
+| Saved design systems | `figma.clientStorage`, key `dsd-design-systems-v1` | This device/user, all files; selected explicitly, never applied silently |
+| Older settings (read for migration only, never deleted) | `dsd-config-v1` (file), `dsd-portable-design-system-v1` (device) | |
 
-* Every save also writes a **portable copy** (`toPortable`): library refs, source switches for
-  libraries, and the scales. Local refs and local switches are removed, because they would mean
-  nothing in another file.
-* When a file has no settings, the empty state offers **"Start from ‹name›"** using the portable
-  copy. The designer still reviews and saves it; nothing is applied silently.
+* Selecting, capturing or saving a design system also stores it in the device list, so it can be
+  chosen in another file. Local refs in it only resolve in their own file. Anywhere else they
+  show as missing on the edit screen, and dependent checks are "Not verifiable".
 * Earlier builds fell back to a device-wide `clientStorage['dsd-config-v1']` when a file was
   read-only. That leaked one file's ids into every file, so it was removed and the key is no
   longer read.
+* Very large captures may not fit in the file's plugin data. Saving then reports `session`, and
+  the design system stays in the device list.
 
 ## 4. "Not verifiable"
 

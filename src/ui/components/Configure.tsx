@@ -9,6 +9,7 @@ import {
   type AssetRef,
 } from '../../shared/designSystem';
 import type { Discovery } from '../../shared/messages';
+import { countItems, describeSource, type DesignSystemReference } from '../../shared/reference';
 import { RULE_CATALOG } from '../../shared/ruleCatalog';
 import type { AuditConfig, DesignSystemConfig, SourceSelection } from '../../shared/types';
 import { Footer, Header, plural } from './common';
@@ -20,6 +21,11 @@ interface Props {
   initial?: DesignSystemConfig | null;
   onSave: (config: AuditConfig) => void;
   onCancel?: () => void;
+  /**
+   * Editing a design system captured from its own file: its contents come from that file, so they
+   * are summarised rather than listed asset by asset.
+   */
+  captured?: DesignSystemReference | null;
 }
 
 interface Row {
@@ -42,7 +48,7 @@ function rowsFor(found: AssetIdentity[], selected: AssetRef[], meta?: (a: AssetI
 
 const toggleRef = (refs: AssetRef[], ref: AssetRef, on: boolean) => (on ? [...refs.filter((r) => !sameRef(r, ref)), ref] : refs.filter((r) => !sameRef(r, ref)));
 
-export function Configure({ config, discovery, initial, onSave, onCancel }: Props) {
+export function Configure({ config, discovery, initial, onSave, onCancel, captured }: Props) {
   const [ds, setDs] = useState<DesignSystemConfig | null>(config.designSystem ?? initial ?? null);
   const [spacing, setSpacing] = useState((config.designSystem ?? initial)?.spacingScale.join(', ') ?? '');
   const [radius, setRadius] = useState((config.designSystem ?? initial)?.radiusScale.join(', ') ?? '');
@@ -83,6 +89,9 @@ export function Configure({ config, discovery, initial, onSave, onCancel }: Prop
     validation.errors = validation.errors.filter((e) => !e.includes('no longer exists'));
     validation.warnings = validation.warnings.filter((w) => !w.includes('isn’t used in this file'));
   }
+  // Captured library assets don't need to be used here: their values were captured.
+  if (captured) validation.warnings = validation.warnings.filter((w) => !w.includes('isn’t used in this file'));
+  const counts = captured ? countItems(captured) : null;
 
   const setSelection = (key: 'textStyles' | 'components', patch: Partial<SourceSelection>) => setDs({ ...ds, [key]: { ...ds[key], ...patch } });
 
@@ -116,11 +125,17 @@ export function Configure({ config, discovery, initial, onSave, onCancel }: Prop
         </label>
 
         <h3 class="section-title">Design system sources</h3>
+        {captured && (
+          <p class="muted small">
+            {describeSource(captured)}. To update its styles, tokens and components, capture the library file again.
+          </p>
+        )}
 
         <SourceSection title="Tokens" hint="Choose the variable collections your team uses as tokens. Every variable in a chosen collection counts as approved.">
-          {!discovery && <p class="muted small">Loading…</p>}
-          {discovery && collectionRows.length === 0 && <p class="muted small">No variable collections are used on this page or made in this file.</p>}
-          {collectionRows.map((row) => (
+          {counts && <p class="small">{plural(counts.collections, 'collection')} · {plural(counts.variables, 'variable')} captured</p>}
+          {!counts && !discovery && <p class="muted small">Loading…</p>}
+          {!counts && discovery && collectionRows.length === 0 && <p class="muted small">No variable collections are used on this page or made in this file.</p>}
+          {!counts && collectionRows.map((row) => (
             <AssetRow
               key={JSON.stringify(row.ref)}
               row={row}
@@ -136,12 +151,14 @@ export function Configure({ config, discovery, initial, onSave, onCancel }: Prop
           hint="Choose which text styles are approved."
           selection={ds.textStyles}
           found={discovery?.textStyles}
+          capturedCount={counts?.textStyles}
           onChange={(patch) => setSelection('textStyles', patch)}
         />
 
         <SourceSection title="Colour styles" hint="Tokens are preferred. Approve colour styles only if your team still uses them.">
+          {counts && <p class="small">{plural(counts.paintStyles, 'colour style')} captured</p>}
           <SwitchRow
-            label="Colour styles from your libraries"
+            label={counts ? 'Also accept colour styles from any other library' : 'Colour styles from your libraries'}
             checked={ds.paintStyles.library}
             onChange={(v) => setDs({ ...ds, paintStyles: { ...ds.paintStyles, library: v } })}
           />
@@ -158,6 +175,7 @@ export function Configure({ config, discovery, initial, onSave, onCancel }: Prop
           hint="Choose which components are approved. Instances of anything else are flagged."
           selection={ds.components}
           found={discovery?.components}
+          capturedCount={counts?.components}
           onChange={(patch) => setSelection('components', patch)}
         />
 
@@ -262,9 +280,24 @@ function SelectionSection(props: {
   hint: string;
   selection: SourceSelection;
   found: AssetIdentity[] | undefined;
+  /** Set for a captured design system: its items are summarised, not listed. */
+  capturedCount?: number;
   onChange: (patch: Partial<SourceSelection>) => void;
 }) {
-  const { selection, found, onChange, noun } = props;
+  const { selection, found, onChange, noun, capturedCount } = props;
+  if (capturedCount !== undefined) {
+    return (
+      <SourceSection title={props.title} hint={props.hint}>
+        <p class="small">{plural(capturedCount, noun.replace(/s$/, ''))} captured</p>
+        <SwitchRow
+          label={`Also accept ${noun} from any other library`}
+          hint="off: only this design system counts"
+          checked={selection.library}
+          onChange={(v) => onChange({ library: v })}
+        />
+      </SourceSection>
+    );
+  }
   const rows = rowsFor(found ?? [], selection.items);
   return (
     <SourceSection title={props.title} hint={props.hint}>

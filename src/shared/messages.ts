@@ -1,5 +1,6 @@
 import type { AssetIdentity } from './designSystem';
-import type { AuditCategory, AuditConfig, AuditResult, DesignSystemConfig } from './types';
+import type { DesignSystemReference } from './reference';
+import type { AuditCategory, AuditResult, DesignSystemConfig, PluginSettings } from './types';
 
 export type AuditScope = 'page' | 'selection';
 
@@ -22,7 +23,7 @@ export interface Discovery {
   textStyles: AssetIdentity[];
   paintStyles: SourceCounts;
   components: AssetIdentity[];
-  /** Library-first suggestion. Never saved until the designer confirms. */
+  /** What this page uses, listed explicitly. Never saved until the designer confirms. */
   suggested: DesignSystemConfig;
 }
 
@@ -35,19 +36,24 @@ export type UiToMain =
   | { type: 'go-to-node'; nodeId: string }
   | { type: 'get-discovery' }
   | { type: 'check-freshness' }
-  | { type: 'save-config'; config: AuditConfig };
+  /** Save edits to the active design system and audit options. */
+  | { type: 'save-settings'; settings: PluginSettings }
+  /** Replace the active design system with a saved one. Nothing from the previous one is kept. */
+  | { type: 'switch-design-system'; id: string }
+  /** Capture this file's styles, variables and components as a design system, and select it. */
+  | { type: 'capture-design-system' };
 
 export type AuditErrorKind = 'cannot-start' | 'timeout' | 'cancelled' | 'no-design-system' | 'empty-selection';
 
 export type MainToUi =
   | {
       type: 'init-state';
-      config: AuditConfig;
+      settings: PluginSettings;
+      /** Design systems saved on this device, selectable as a whole. */
+      library: DesignSystemReference[];
       pageName: string;
       selectionCount: number;
       lastAudit: AuditResult | null;
-      /** Library-only design system last saved on this device, offered for files with none yet. */
-      portable: DesignSystemConfig | null;
     }
   | { type: 'last-audit'; result: AuditResult | null }
   | { type: 'selection-changed'; pageName: string; selectionCount: number }
@@ -69,5 +75,6 @@ export type MainToUi =
    * (too large to re-read cheaply, or couldn't be checked).
    */
   | { type: 'audit-freshness'; auditId: string; pageId: string; state: 'current' | 'changed' | 'unverified' }
-  /** `session`: the file is read-only, so settings last until the plugin closes. */
-  | { type: 'config-saved'; config: AuditConfig; savedTo: 'file' | 'session' };
+  /** `session`: the file can't store them (read-only), so settings last until the plugin closes. */
+  | { type: 'settings-saved'; settings: PluginSettings; library: DesignSystemReference[]; savedTo: 'file' | 'session' }
+  | { type: 'capture-failed'; message: string };

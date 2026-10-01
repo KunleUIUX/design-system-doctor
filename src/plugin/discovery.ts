@@ -45,14 +45,12 @@ export async function discover(currentName: string | undefined): Promise<Discove
     local: data.paintStyles.filter((s) => !s.remote).length,
   };
 
-  // Library-first suggestion; local sources only when no library is in use at all.
+  // Suggest what this page actually uses, listed explicitly: library assets first, local ones only
+  // when no library is in use. The "all from your libraries" switches stay off, so a design
+  // system never silently means "any library"; they remain an explicit option on the edit screen.
   const hasLibrary =
     collections.some((c) => c.remote) || textStyles.some((s) => s.remote) || componentList.some((c) => c.remote) || paintStyles.library > 0;
-  const suggest = (items: AssetIdentity[]) => ({
-    library: items.some((i) => i.remote),
-    local: !hasLibrary && items.some((i) => !i.remote),
-    items: [],
-  });
+  const pick = (items: AssetIdentity[]) => items.filter((i) => (hasLibrary ? i.remote : true)).map(refFor);
   return {
     collections,
     textStyles,
@@ -61,10 +59,10 @@ export async function discover(currentName: string | undefined): Promise<Discove
     suggested: {
       version: 2,
       name: currentName ?? 'My design system',
-      variableCollections: collections.filter((c) => (hasLibrary ? c.remote : true)).map(refFor),
-      textStyles: suggest(textStyles),
-      paintStyles: { library: paintStyles.library > 0, local: !hasLibrary && paintStyles.local > 0 },
-      components: suggest(componentList),
+      variableCollections: pick(collections),
+      textStyles: { library: false, local: false, items: pick(textStyles) },
+      paintStyles: { library: false, local: false, items: pick(data.paintStyles) },
+      components: { library: false, local: false, items: pick(componentList) },
       spacingScale: DEFAULT_SPACING_SCALE,
       radiusScale: DEFAULT_RADIUS_SCALE,
     },

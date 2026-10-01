@@ -12,7 +12,9 @@ export function auditFingerprint(nodes: NodeSnapshot[], data: DesignSystemData, 
   const canonical = JSON.stringify({
     nodes,
     data: {
-      collections: byId(data.collections),
+      // Mode names only matter for mapping captured values, whose effect is already in `variables`;
+      // leaving them out keeps results saved before they were read comparable.
+      collections: byId(data.collections).map(({ modes: _modes, ...c }) => c),
       variables: byId(data.variables),
       textStyles: byId(data.textStyles),
       paintStyles: byId(data.paintStyles),

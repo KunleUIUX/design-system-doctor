@@ -149,7 +149,7 @@ export function validateDesignSystem(
     ds.variableCollections.length > 0 ||
     ds.textStyles.library || ds.textStyles.local || ds.textStyles.items.length > 0 ||
     ds.components.library || ds.components.local || ds.components.items.length > 0 ||
-    ds.paintStyles.library || ds.paintStyles.local;
+    ds.paintStyles.library || ds.paintStyles.local || (ds.paintStyles.items?.length ?? 0) > 0;
   if (!anySource) errors.push('Choose at least one source: a variable collection, text styles or components.');
 
   const check = (refs: AssetRef[], available: AssetIdentity[], kind: string) => {

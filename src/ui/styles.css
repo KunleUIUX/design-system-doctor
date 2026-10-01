@@ -126,6 +126,7 @@ fieldset.source legend { font-weight: 500; padding: 0 4px; }
 .row:hover { background: var(--bg-hover); }
 .count { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 20px; text-align: right; }
 .count.error { color: var(--danger-text); }
+.count.pass { color: var(--success); }
 
 .issue-row { width: 100%; display: flex; gap: 10px; align-items: flex-start; padding: 10px 16px; background: none; border: 0; border-bottom: 1px solid var(--border); cursor: pointer; text-align: left; }
 .issue-row:hover { background: var(--bg-hover); }
@@ -218,3 +219,14 @@ section.source, div.source { border: 1px solid var(--border); border-radius: 6px
 .validation ul { margin: 0 0 6px; padding-left: 16px; }
 .validation-errors { color: var(--danger-text); }
 .validation-warnings { color: var(--text-secondary); }
+
+/* Design system: current, switching, coverage */
+.ds-current { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ds-actions { display: flex; gap: 12px; flex-shrink: 0; }
+.ds-list { margin: 8px 0 4px; }
+.ds-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.ds-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.badge { font-size: 11px; font-weight: 600; color: var(--success); white-space: nowrap; }
+.coverage { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
+.coverage-list { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 2px; }
+.coverage-list li { display: flex; justify-content: space-between; gap: 8px; }

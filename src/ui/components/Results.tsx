@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
-import { CATEGORY_LABELS, CATEGORY_ORDER, type AuditCategory, type AuditResult } from '../../shared/types';
+import { CATEGORY_LABELS, type AuditCategory, type AuditResult, type CoverageCount, type ReferenceCoverage } from '../../shared/types';
+import { categoryRows, type CategoryRow } from '../categoryRows';
 import {
   AuditCounts,
   ConfidenceNote,
@@ -29,9 +30,9 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
   const { compliance } = result;
   const hiddenSkipped = result.skippedNodeCount - result.failedNodeCount;
 
-  const groups = CATEGORY_ORDER.map((c) => ({ c, ...countBySeverity(result.issues.filter((i) => i.category === c)) })).filter(
-    (g) => g.error + g.warning + g.review + g.unverifiable > 0,
-  );
+  // Categories with findings, plus categories that were checked and fully passed.
+  const rows = categoryRows(result);
+  const hasFindings = rows.some((r) => !r.allPassed);
 
   return (
     <div class="screen">
@@ -67,6 +68,7 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
             {' '}Checks that depend on them are marked “Not verifiable” and don’t count toward the score.
           </div>
         )}
+        {result.coverage && <CoverageNote coverage={result.coverage} />}
         {resolvedCount > 0 && (
           <div class="banner success" role="status">✓ {plural(resolvedCount, 'finding')} resolved since the last audit.</div>
         )}
@@ -87,11 +89,14 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
             <p><strong>Nothing to score</strong></p>
             <p class="muted">No layers here use anything the enabled rules check, like text, fills, auto layout, corner radius or components.</p>
           </div>
-        ) : groups.length === 0 ? (
-          <div class="empty">
-            <p class="success">✓ No violations found</p>
-            <p class="muted">Every configured rule passed. This doesn’t review visual or functional quality.</p>
-          </div>
+        ) : !hasFindings ? (
+          <>
+            <div class="empty">
+              <p class="success">✓ No violations found</p>
+              <p class="muted">Every configured rule passed. This doesn’t review visual or functional quality.</p>
+            </div>
+            {rows.length > 0 && <CategoryList rows={rows} onOpen={onOpen} />}
+          </>
         ) : (
           <>
             <div class="counts">
@@ -108,23 +113,7 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
                 </span>
               )}
             </div>
-            <h3 class="section-title">By category</h3>
-            <ul class="list">
-              {groups.map(({ c, error: e, warning: w, review: rv, unverifiable: nv }) => (
-                <li key={c}>
-                  <button class="row" onClick={() => onOpen(c)}>
-                    <span>{CATEGORY_LABELS[c]}</span>
-                    <span class="row-counts">
-                      {e > 0 && <span class="count error">{plural(e, 'issue')}</span>}
-                      {w > 0 && <span class="count warning">{plural(w, 'warning')}</span>}
-                      {nv > 0 && <span class="count review">{nv} not verifiable</span>}
-                      {rv > 0 && <span class="count review">{rv} to review</span>}
-                      <span class="chevron" aria-hidden="true">›</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <CategoryList rows={rows} onOpen={onOpen} />
           </>
         )}
 
@@ -133,6 +122,71 @@ export function Results({ result, ruleErrorCount, resolvedCount, freshness, onOp
       <Footer>
         <button class="btn primary full" onClick={onRerun}>Re-run audit</button>
       </Footer>
+    </div>
+  );
+}
+
+function CategoryList({ rows, onOpen }: { rows: CategoryRow[]; onOpen: (category: AuditCategory) => void }) {
+  return (
+    <>
+      <h3 class="section-title">By category</h3>
+      <ul class="list">
+        {rows.map(({ category: c, error: e, warning: w, review: rv, unverifiable: nv, checks, allPassed }) => (
+          <li key={c}>
+            <button class="row" onClick={() => onOpen(c)}>
+              <span>{CATEGORY_LABELS[c]}</span>
+              <span class="row-counts">
+                {allPassed && <span class="count pass">✓ {checks} passed</span>}
+                {e > 0 && <span class="count error">{plural(e, 'issue')}</span>}
+                {w > 0 && <span class="count warning">{plural(w, 'warning')}</span>}
+                {nv > 0 && <span class="count review">{nv} not verifiable</span>}
+                {rv > 0 && <span class="count review">{rv} to review</span>}
+                <span class="chevron" aria-hidden="true">›</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/**
+ * How much of the selected design system this audit could actually use: read from the file,
+ * taken from captured values, or unavailable (dependent checks are "Not verifiable").
+ */
+function CoverageNote({ coverage }: { coverage: ReferenceCoverage }) {
+  const rows: [string, CoverageCount][] = [
+    ['Text styles', coverage.textStyles],
+    ['Tokens', coverage.tokens],
+    ['Colour styles', coverage.paintStyles],
+    ['Components', coverage.components],
+  ];
+  const listed = rows.filter(([, c]) => c.total > 0);
+  if (!listed.length) return null;
+  const usedCaptured = listed.some(([, c]) => c.captured > 0);
+  const date = coverage.capturedAt ? new Date(coverage.capturedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+  return (
+    <div class="coverage" role="note">
+      <p class="small"><strong>Design system coverage</strong></p>
+      <ul class="coverage-list">
+        {listed.map(([label, c]) => (
+          <li key={label} class="small">
+            <span>{label}</span>
+            <span class="muted">
+              {[c.live ? `${c.live} read here` : '', c.captured ? `${c.captured} captured` : '', c.unavailable ? `${c.unavailable} unavailable` : '']
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {usedCaptured && (
+        <p class="muted small">
+          Where this file couldn’t read the design system, Doctor used values captured from its library file{date ? ` on ${date}` : ''}. Those
+          findings name the asset with “(captured)”.
+        </p>
+      )}
     </div>
   );
 }

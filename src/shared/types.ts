@@ -1,4 +1,5 @@
 import type { AssetRef } from './designSystem';
+import type { DesignSystemReference } from './reference';
 
 // Plain-data model shared by the Figma adapter, the audit engine and the UI.
 // Nothing in here may reference `figma.*` or the DOM.
@@ -143,6 +144,8 @@ export interface CollectionInfo {
   remote: boolean;
   defaultModeId: string;
   variableCount: number;
+  /** Mode ids and names, so captured values (keyed by the library's mode ids) can be matched by mode name. */
+  modes?: { id: string; name: string }[];
 }
 
 export interface TextStyleInfo extends TextProps {
@@ -198,7 +201,8 @@ export interface DesignSystemConfig {
   /** Approved token collections. Every variable in them is an approved token. */
   variableCollections: AssetRef[];
   textStyles: SourceSelection;
-  paintStyles: SourceToggle;
+  /** Colour styles: origin switches, plus specific styles listed by a design system reference. */
+  paintStyles: SourceToggle & { items?: AssetRef[] };
   components: SourceSelection;
   spacingScale: number[];
   radiusScale: number[];
@@ -214,6 +218,15 @@ export interface AuditConfig {
   nearColorThreshold: number;
 }
 
+/**
+ * What the plugin stores: the selected design system as a whole reference (see
+ * src/shared/reference.ts) plus audit options. The engine never sees this directly: the reference
+ * is prepared into an AuditConfig + DesignSystemData first (src/engine/prepareReference.ts).
+ */
+export interface PluginSettings extends Omit<AuditConfig, 'designSystem'> {
+  designSystem: DesignSystemReference | null;
+}
+
 export const DEFAULT_SPACING_SCALE = [0, 4, 8, 12, 16, 24, 32, 40, 48, 64];
 export const DEFAULT_RADIUS_SCALE = [0, 4, 8, 12, 16, 999];
 
@@ -224,6 +237,30 @@ export const DEFAULT_AUDIT_CONFIG: AuditConfig = {
   ignoredNodeIds: [],
   nearColorThreshold: 2,
 };
+
+export const DEFAULT_SETTINGS: PluginSettings = { ...DEFAULT_AUDIT_CONFIG, designSystem: null };
+
+/** How completely the design system could be checked in one audit, per kind of asset. */
+export interface CoverageCount {
+  /** Listed in the design system. */
+  total: number;
+  /** Read from this file. */
+  live: number;
+  /** Not readable here; checked against values captured from the library file. */
+  captured: number;
+  /** Neither readable here nor captured: dependent checks are "Not verifiable". */
+  unavailable: number;
+}
+
+export interface ReferenceCoverage {
+  sourceKind: string;
+  capturedAt?: string;
+  textStyles: CoverageCount;
+  /** Counted per variable collection. */
+  tokens: CoverageCount;
+  paintStyles: CoverageCount;
+  components: CoverageCount;
+}
 
 // ─── Results ────────────────────────────────────────────────────────────────
 
@@ -277,6 +314,10 @@ export interface AuditResult {
   designSystemName: string;
   /** Approved sources that couldn't be read in this file; checks depending on them are unverifiable. */
   unresolvedSources?: AssetRef[];
+  /** How completely the selected design system could be read or checked from captured values. */
+  coverage?: ReferenceCoverage;
+  /** Scored checks per category. Absent on results saved by older versions. */
+  checksByCategory?: Partial<Record<AuditCategory, number>>;
   /** Layers the audit started from (page children or the selection), for freshness checks. */
   rootIds: string[];
   /**

@@ -5,3 +5,4 @@ dev/harness.js
 dev/figma-e2e.js
 dev/e2e/*.generated.js
 .claude/settings.local.json
+dev/e2e/*.generated.json

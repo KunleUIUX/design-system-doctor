@@ -162,7 +162,8 @@ export class DesignSystemResolver {
   isPaintStyleApproved(id: string): boolean {
     const s = this.paintStyles.get(id);
     if (!s) return false;
-    return s.remote ? this.config.paintStyles.library : this.config.paintStyles.local;
+    if (s.remote ? this.config.paintStyles.library : this.config.paintStyles.local) return true;
+    return (this.config.paintStyles.items ?? []).some((r) => matchesRef(r, s));
   }
 
   // ── Components ───────────────────────────────────────────────────────────

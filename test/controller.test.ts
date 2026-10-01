@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createController } from '../src/plugin/controller';
 import { memoryStorage } from '../src/plugin/storage';
+import { referenceFromSelection, toSelection } from '../src/shared/reference';
+import { DEFAULT_SETTINGS } from '../src/shared/types';
 import type { MainToUi } from '../src/shared/messages';
 import { auditConfig } from './fixtures';
 
@@ -21,14 +23,18 @@ function makeFigma() {
     on: (type: string, cb: () => void) => type === 'nodechange' && listeners.push(cb),
   };
   rect.parent = page;
+  const published = { getPublishStatusAsync: async () => 'CURRENT' };
   const brand = { id: 'V:brand', key: 'k', name: 'color/brand/primary', variableCollectionId: 'C:ds', remote: false, resolvedType: 'COLOR',
-    valuesByMode: { m: { r: 0x63 / 255, g: 0x5b / 255, b: 0xff / 255, a: 1 } } };
-  const collection = { id: 'C:ds', key: 'c', name: 'Tokens', remote: false, defaultModeId: 'm', variableIds: ['V:brand'] };
+    valuesByMode: { m: { r: 0x63 / 255, g: 0x5b / 255, b: 0xff / 255, a: 1 } }, ...published };
+  const collection = { id: 'C:ds', key: 'c', name: 'Tokens', remote: false, defaultModeId: 'm', variableIds: ['V:brand'],
+    modes: [{ modeId: 'm', name: 'Light' }], ...published };
   const scrolled: unknown[] = [];
   const figma = {
     mixed: MIXED,
     skipInvisibleInstanceChildren: false,
     currentPage: page,
+    root: { name: 'Acme Library', findAllWithCriteria: () => [] },
+    loadAllPagesAsync: async () => undefined,
     viewport: { scrollAndZoomIntoView: (nodes: unknown[]) => scrolled.push(...nodes) },
     getNodeByIdAsync: async (id: string) => ({ '9:2': rect, '9:1': page } as Record<string, unknown>)[id] ?? null,
     setCurrentPageAsync: async (p: unknown) => void (figma.currentPage = p as typeof page),
@@ -117,49 +123,87 @@ describe('controller', () => {
 describe('design system persistence', () => {
   const localTokens = { source: 'local' as const, id: 'C:ds', name: 'Tokens' };
   const library = { source: 'library' as const, key: 'lib-key', name: 'Acme Colors' };
+  const acme = () => referenceFromSelection({ ...auditConfig().designSystem!, name: 'Acme', variableCollections: [localTokens, library] }, 'in-use');
 
-  it('keeps the saved design system across a plugin close and reopen', async () => {
-    const device = { portable: null };
+  it('keeps the selected design system across a plugin close and reopen', async () => {
+    const device = { library: [] };
     const fileStorage = memoryStorage(null, device);
     const first = createController({ post: (m) => sent.push(m), storage: fileStorage });
     await first.handle({ type: 'init' });
-    expect(ofType('init-state')[0].config.designSystem).toBeNull();
+    expect(ofType('init-state')[0].settings.designSystem).toBeNull();
 
-    const ds = { ...auditConfig().designSystem!, name: 'Acme', variableCollections: [localTokens, library] };
-    await first.handle({ type: 'save-config', config: { ...auditConfig(), designSystem: ds, ignoredNodeIds: ['9:2'] } });
-    expect(ofType('config-saved')[0].savedTo).toBe('file');
+    const ds = acme();
+    await first.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, designSystem: ds, ignoredNodeIds: ['9:2'] } });
+    expect(ofType('settings-saved')[0].savedTo).toBe('file');
 
     sent = [];
     const reopened = createController({ post: (m) => sent.push(m), storage: fileStorage });
     await reopened.handle({ type: 'init' });
-    const { config } = ofType('init-state')[0];
-    expect(config.designSystem).toMatchObject({ name: 'Acme', variableCollections: [localTokens, library] });
-    expect(config.ignoredNodeIds).toEqual(['9:2']);
+    const { settings } = ofType('init-state')[0];
+    expect(settings.designSystem).toEqual(ds);
+    expect(settings.ignoredNodeIds).toEqual(['9:2']);
   });
 
-  it('offers another file only the portable (library) part, never file-specific ids', async () => {
-    const device = { portable: null };
+  it('never applies another file’s design system silently; it is offered to select as a whole', async () => {
+    const device = { library: [] };
     const fileA = createController({ post: (m) => sent.push(m), storage: memoryStorage(null, device) });
-    const ds = { ...auditConfig().designSystem!, name: 'Acme', variableCollections: [localTokens, library] };
-    await fileA.handle({ type: 'save-config', config: { ...auditConfig(), designSystem: ds, ignoredNodeIds: ['9:2'] } });
+    const ds = acme();
+    await fileA.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, designSystem: ds, ignoredNodeIds: ['9:2'] } });
 
     sent = [];
     const fileB = createController({ post: (m) => sent.push(m), storage: memoryStorage(null, device) });
     await fileB.handle({ type: 'init' });
     const init = ofType('init-state')[0];
-    expect(init.config.designSystem).toBeNull(); // file B has no settings of its own
-    expect(init.config.ignoredNodeIds).toEqual([]);
-    expect(init.portable?.variableCollections).toEqual([library]);
-    expect(JSON.stringify(init.portable)).not.toContain('C:ds');
+    expect(init.settings.designSystem).toBeNull(); // file B has no settings of its own
+    expect(init.settings.ignoredNodeIds).toEqual([]);
+    expect(init.library.map((r) => r.name)).toEqual(['Acme']);
+
+    await fileB.handle({ type: 'switch-design-system', id: ds.id });
+    const saved = ofType('settings-saved')[0];
+    expect(saved.settings.designSystem).toEqual(ds);
+    expect(saved.settings.ignoredNodeIds).toEqual([]); // file A's options stay in file A
   });
 
-  it('migrates a v1 config (consuming-file collection ids) to refs when loading', async () => {
+  it('switching replaces the design system completely: nothing from the previous one is kept', async () => {
+    const device = { library: [] };
+    const c = createController({ post: (m) => sent.push(m), storage: memoryStorage(null, device) });
+    const rayna = referenceFromSelection({ ...auditConfig().designSystem!, name: 'Rayna UI', textStyles: { library: false, local: false, items: [{ source: 'library', key: 'rayna-body', name: 'Body' }] } }, 'in-use');
+    const material = referenceFromSelection({ ...auditConfig().designSystem!, name: 'Material 3', textStyles: { library: false, local: false, items: [{ source: 'library', key: 'm3-label', name: 'Label' }] } }, 'in-use');
+    await c.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, designSystem: rayna } });
+    await c.handle({ type: 'save-settings', settings: { ...DEFAULT_SETTINGS, designSystem: material } });
+    await c.handle({ type: 'switch-design-system', id: rayna.id });
+    await c.handle({ type: 'switch-design-system', id: material.id });
+    const active = ofType('settings-saved').slice(-1)[0].settings.designSystem!;
+    expect(active.name).toBe('Material 3');
+    expect(JSON.stringify(active)).not.toContain('rayna');
+  });
+
+  it('migrates a v1 config (consuming-file collection ids) to a reference that behaves as before', async () => {
     const v1 = { ...auditConfig(), designSystem: { name: 'Old', approvedCollectionIds: ['C:ds'], textStyles: { library: true, local: false },
       paintStyles: { library: false, local: false }, components: { library: true, local: false }, spacingScale: [0, 8], radiusScale: [0] } };
     const c = createController({ post: (m) => sent.push(m), storage: memoryStorage(v1 as never) });
     await c.handle({ type: 'init' });
-    const ds = ofType('init-state')[0].config.designSystem!;
+    const ref = ofType('init-state')[0].settings.designSystem!;
+    expect(ref).toMatchObject({ schema: 1, name: 'Old', source: { kind: 'migrated' } });
+    const ds = toSelection(ref);
     expect(ds).toMatchObject({ version: 2, variableCollections: [{ source: 'local', id: 'C:ds', name: 'Tokens' }] });
     expect(ds.textStyles).toEqual({ library: true, local: false, items: [] });
+  });
+
+  it('captures this file as a design system and audits against it', async () => {
+    const c = createController({ post: (m) => sent.push(m), storage: memoryStorage(null, { library: [] }) });
+    await c.handle({ type: 'init' });
+    await c.handle({ type: 'capture-design-system' });
+    const ref = ofType('settings-saved')[0].settings.designSystem!;
+    expect(ref).toMatchObject({ name: 'Acme Library', source: { kind: 'library-file', fileName: 'Acme Library' } });
+    // Published collection → recorded by key, with its values captured.
+    expect(ref.variableCollections[0]).toMatchObject({ ref: { source: 'library', key: 'c' }, modes: [{ id: 'm', name: 'Light' }] });
+    expect(ref.variableCollections[0].variables?.[0]).toMatchObject({ ref: { source: 'library', key: 'k', name: 'color/brand/primary' }, resolvedType: 'COLOR' });
+
+    // In the library's own file its assets are local but carry the same keys, so they read live.
+    await c.handle({ type: 'run-audit', scope: 'page' });
+    const [{ result }] = ofType('audit-result');
+    expect(result.issues.map((i) => `${i.ruleId} ${i.nodeId}`)).toEqual(['color/raw-matches-token 9:2']);
+    expect(result.coverage?.tokens).toEqual({ total: 1, live: 1, captured: 0, unavailable: 0 });
   });
 });

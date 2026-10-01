@@ -1,5 +1,6 @@
 import { CATEGORY_LABELS, type AuditCategory, type AuditIssue, type AuditResult } from '../../shared/types';
 import type { NavStatus } from '../App';
+import { allPassedLabel } from '../categoryRows';
 import { Affects, Footer, Header, SEVERITY_LABEL, SeverityDot, StaleBanner, plural, type FreshnessState } from './common';
 
 export function issuesIn(result: AuditResult, category: AuditCategory): AuditIssue[] {
@@ -20,6 +21,7 @@ interface Props {
 
 export function CategoryView({ result, category, navStatus, resolvedCount, freshness, onBack, onOpen, onGoToLayer, onRerun }: Props) {
   const issues = issuesIn(result, category);
+  const checks = result.checksByCategory?.[category] ?? 0;
   return (
     <div class="screen">
       <Header title={`${CATEGORY_LABELS[category]} · ${issues.length}`} onBack={onBack} />
@@ -29,7 +31,11 @@ export function CategoryView({ result, category, navStatus, resolvedCount, fresh
           <div class="banner success inset" role="status">✓ {plural(resolvedCount, 'finding')} resolved since the last audit.</div>
         )}
         {issues.length === 0 ? (
-          <p class="muted pad">No findings left in this category.</p>
+          checks > 0 ? (
+            <p class="success pad">✓ {allPassedLabel(checks)}.</p>
+          ) : (
+            <p class="muted pad">No findings left in this category.</p>
+          )
         ) : (
           <ul class="list">
             {issues.map((i) => (

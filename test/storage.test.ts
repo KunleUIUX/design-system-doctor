@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { pluginDataStorage } from '../src/plugin/storage';
+import { migrateToReference } from '../src/shared/reference';
+import { DEFAULT_SETTINGS } from '../src/shared/types';
 import { auditConfig } from './fixtures';
 
 function fakeFigma(opts: { readOnly?: boolean; device?: Record<string, unknown>; fileData?: Record<string, string> }) {
@@ -24,17 +26,26 @@ function fakeFigma(opts: { readOnly?: boolean; device?: Record<string, unknown>;
 describe('pluginDataStorage', () => {
   it('never reads the old device-wide config key (it leaked one file’s ids into others)', async () => {
     fakeFigma({ device: { 'dsd-config-v1': JSON.stringify(auditConfig()) } });
-    expect(await pluginDataStorage.loadConfig()).toBeNull();
+    expect(await pluginDataStorage.loadSettings()).toBeNull();
+    expect(await pluginDataStorage.loadLegacyConfig()).toBeNull();
   });
 
   it('stores settings in the file, or only for the session when the file is read-only', async () => {
+    const settings = { ...DEFAULT_SETTINGS, designSystem: migrateToReference(auditConfig().designSystem!) };
     const { fileData, device } = fakeFigma({});
-    expect(await pluginDataStorage.saveConfig(auditConfig())).toBe('file');
-    expect(JSON.parse(fileData['dsd-config-v1']).designSystem.name).toBe('Acme');
+    expect(await pluginDataStorage.saveSettings(settings)).toBe('file');
+    expect(JSON.parse(fileData['dsd-settings-v3']).designSystem.name).toBe('Acme');
 
     const ro = fakeFigma({ readOnly: true });
-    expect(await pluginDataStorage.saveConfig(auditConfig())).toBe('session');
+    expect(await pluginDataStorage.saveSettings(settings)).toBe('session');
     expect(ro.device).toEqual({});
     expect(device['dsd-config-v1']).toBeUndefined();
+  });
+
+  it('still reads, and never deletes, the older settings key so migration and rollback work', async () => {
+    const { fileData } = fakeFigma({ fileData: { 'dsd-config-v1': JSON.stringify(auditConfig()) } });
+    expect((await pluginDataStorage.loadLegacyConfig())?.designSystem?.name).toBe('Acme');
+    await pluginDataStorage.saveSettings({ ...DEFAULT_SETTINGS, designSystem: migrateToReference(auditConfig().designSystem!) });
+    expect(fileData['dsd-config-v1']).toBeDefined();
   });
 });

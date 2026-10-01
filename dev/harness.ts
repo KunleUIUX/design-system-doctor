@@ -2,15 +2,17 @@
 // Runs the real audit engine over fixture snapshots. Not part of the plugin bundle.
 
 import { evaluateNodes } from '../src/engine/orchestrator';
+import { prepareReference } from '../src/engine/prepareReference';
 import type { MainToUi, UiToMain } from '../src/shared/messages';
+import { migrateToReference, newReferenceId, type DesignSystemReference } from '../src/shared/reference';
 import {
-  DEFAULT_AUDIT_CONFIG,
   DEFAULT_RADIUS_SCALE,
+  DEFAULT_SETTINGS,
   DEFAULT_SPACING_SCALE,
-  type AuditConfig,
   type DesignSystemConfig,
   type DesignSystemData,
   type NodeSnapshot,
+  type PluginSettings,
 } from '../src/shared/types';
 
 const hex = (h: string) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255, a: 1 });
@@ -18,7 +20,7 @@ const lh = (v: number) => ({ unit: 'PIXELS' as const, value: v });
 const ls0 = { unit: 'PERCENT' as const, value: 0 };
 
 const data: DesignSystemData = {
-  collections: [{ id: 'C:acme', key: 'k', name: 'Acme tokens', remote: true, defaultModeId: 'M:1', variableCount: 3 }],
+  collections: [{ id: 'C:acme', key: 'k', name: 'Acme tokens', remote: true, defaultModeId: 'M:1', variableCount: 3, modes: [{ id: 'M:1', name: 'Light' }] }],
   variables: [
     { id: 'V:brand', key: 'v1', name: 'color/brand/primary', collectionId: 'C:acme', remote: true, resolvedType: 'COLOR', valuesByMode: { 'M:1': hex('#635BFF') } },
     { id: 'V:text', key: 'v2', name: 'color/text/primary', collectionId: 'C:acme', remote: true, resolvedType: 'COLOR', valuesByMode: { 'M:1': hex('#1A1A1A') } },
@@ -53,7 +55,9 @@ const nodes: NodeSnapshot[] = [
   { ...base, id: '10:7', name: 'Apply coupon', type: 'INSTANCE', path: ['Checkout'], instance: { main: { id: 'CMP:btn', key: 'btn', name: 'Button / Primary', remote: true } }, instanceOverrides: [] },
 ];
 
-let config: AuditConfig = { ...DEFAULT_AUDIT_CONFIG };
+let settings: PluginSettings = { ...DEFAULT_SETTINGS };
+/** Design systems "saved on this device". ?saved=1 starts with the captured Acme library. */
+let library: DesignSystemReference[] = [];
 
 // ?real=1 replays an AuditResult captured from a real Figma file (dev/fixtures/real-audit.json)
 // and records every message the UI sends, so UI → node-id wiring can be checked against Figma.
@@ -61,13 +65,13 @@ const REAL = new URLSearchParams(location.search).has('real');
 const sent: UiToMain[] = [];
 (window as unknown as { __sent: UiToMain[] }).__sent = sent;
 if (REAL) {
-  config = {
-    ...DEFAULT_AUDIT_CONFIG,
-    designSystem: {
+  settings = {
+    ...DEFAULT_SETTINGS,
+    designSystem: migrateToReference({
       version: 2, name: 'DSD Test', variableCollections: [{ source: 'local', id: 'VariableCollectionId:45:3', name: 'DSD Test Tokens' }],
       textStyles: { library: false, local: true, items: [] }, paintStyles: { library: false, local: false }, components: { library: false, local: true, items: [] },
       spacingScale: DEFAULT_SPACING_SCALE, radiusScale: DEFAULT_RADIUS_SCALE,
-    },
+    }),
   };
 }
 const frame = document.getElementById('plugin') as HTMLIFrameElement;
@@ -78,9 +82,46 @@ let cancelled = false;
 function acmeSuggestion(): DesignSystemConfig {
   return {
     version: 2, name: 'Acme Design System', variableCollections: [{ source: 'library', key: 'k', name: 'Acme tokens' }],
-    textStyles: { library: true, local: false, items: [] }, paintStyles: { library: false, local: false }, components: { library: true, local: false, items: [] },
+    textStyles: { library: false, local: false, items: data.textStyles.filter((t) => t.remote).map((t) => ({ source: 'library' as const, key: t.key, name: t.name })) },
+    paintStyles: { library: false, local: false, items: [] },
+    components: { library: false, local: false, items: [{ source: 'library', key: 'btn', name: 'Button / Primary' }] },
     spacingScale: DEFAULT_SPACING_SCALE, radiusScale: DEFAULT_RADIUS_SCALE,
   };
+}
+
+/**
+ * What "Save this file as a design system" would capture in the Acme library's own file. It holds
+ * more than the sample page uses: a "Caption" text style and a red error token, which the page
+ * can't read, so the audit falls back to these captured values.
+ */
+function capturedAcme(): DesignSystemReference {
+  const lib = (key: string, name: string) => ({ source: 'library' as const, key, name });
+  return {
+    schema: 1, id: newReferenceId(), name: 'Acme Design System', source: { kind: 'library-file', fileName: 'Acme Design System' },
+    capturedAt: new Date().toISOString(),
+    variableCollections: [{
+      ref: lib('k', 'Acme tokens'), defaultModeId: 'L:1', modes: [{ id: 'L:1', name: 'Light' }],
+      variables: [
+        ...data.variables.map((v) => ({ ref: lib(v.key, v.name), resolvedType: v.resolvedType, valuesByMode: { 'L:1': v.valuesByMode['M:1'] } })),
+        { ref: lib('v4', 'color/feedback/error'), resolvedType: 'COLOR' as const, valuesByMode: { 'L:1': hex('#E4572E') } },
+      ],
+    }],
+    textStyles: [
+      ...data.textStyles.filter((t) => t.remote).map(({ id: _i, key, name, remote: _r, ...props }) => ({ ref: lib(key, name), props })),
+      { ref: lib('k-caption', 'Caption / Strong'), props: { fontFamily: 'Inter', fontStyle: 'Semi Bold', fontSize: 15, lineHeight: lh(20), letterSpacing: ls0 } },
+    ],
+    paintStyles: [],
+    components: [{ ref: lib('btn', 'Button / Primary') }, { ref: lib('card', 'Card / Default') }],
+    spacingScale: DEFAULT_SPACING_SCALE, radiusScale: DEFAULT_RADIUS_SCALE,
+    alsoAccept: { textStyles: { library: false, local: false }, paintStyles: { library: false, local: false }, components: { library: false, local: false } },
+  };
+}
+if (new URLSearchParams(location.search).has('saved')) library = [capturedAcme()];
+
+function commit(next: PluginSettings) {
+  settings = next;
+  if (settings.designSystem) library = [settings.designSystem, ...library.filter((r) => r.id !== settings.designSystem!.id)];
+  post({ type: 'settings-saved', settings, library, savedTo: 'file' });
 }
 
 async function handle(msg: UiToMain) {
@@ -88,9 +129,7 @@ async function handle(msg: UiToMain) {
   switch (msg.type) {
     case 'init': {
       const lastAudit = REAL ? await (await fetch('fixtures/real-audit.json')).json() : null;
-      // ?portable=1 simulates a library design system saved in another file on this device.
-      const portable = new URLSearchParams(location.search).has('portable') ? { ...acmeSuggestion(), name: 'Acme (from another file)' } : null;
-      post({ type: 'init-state', config, pageName: REAL ? 'DSD – core loop test' : 'Checkout flow', selectionCount: 0, lastAudit, portable });
+      post({ type: 'init-state', settings, library, pageName: REAL ? 'DSD – core loop test' : 'Checkout flow', selectionCount: 0, lastAudit });
       // ?stale=1 simulates the main thread finding that the design changed after this audit.
       if (lastAudit) {
         await wait(300);
@@ -112,9 +151,17 @@ async function handle(msg: UiToMain) {
         },
       });
       break;
-    case 'save-config':
-      config = msg.config;
-      post({ type: 'config-saved', config, savedTo: 'file' });
+    case 'save-settings':
+      commit(msg.settings);
+      break;
+    case 'switch-design-system': {
+      const chosen = library.find((r) => r.id === msg.id);
+      if (chosen) commit({ ...settings, designSystem: JSON.parse(JSON.stringify(chosen)) });
+      break;
+    }
+    case 'capture-design-system':
+      await wait(400);
+      commit({ ...settings, designSystem: capturedAcme() });
       break;
     case 'cancel-audit':
       cancelled = true;
@@ -138,14 +185,19 @@ async function handle(msg: UiToMain) {
         await wait(80);
       }
       const started = new Date();
-      const r = evaluateNodes(nodes, data, config);
+      const reference = settings.designSystem!;
+      const prepared = prepareReference(reference, data);
+      const r = evaluateNodes(nodes, prepared.data, { ...settings, designSystem: prepared.designSystem });
       post({
         type: 'audit-result',
         ruleErrorCount: r.ruleErrors.length,
         result: {
           auditId: '1', scope: msg.scope, pageId: '0:1', pageName: 'Checkout flow', startedAt: started.toISOString(), completedAt: new Date().toISOString(),
           scannedNodeCount: total, skippedNodeCount: 3, failedNodeCount: 0, issues: r.issues, compliance: r.compliance,
-          designSystemName: config.designSystem!.name,
+          designSystemName: reference.name,
+          coverage: prepared.coverage,
+          unresolvedSources: r.unresolvedSources,
+          checksByCategory: r.checksByCategory,
           rootIds: nodes.map((n) => n.id),
           fingerprint: 'harness',
         },

@@ -1,5 +1,5 @@
 import type { AssetRef } from '../shared/designSystem';
-import type { AuditConfig, AuditIssue, DesignSystemData, NodeSnapshot, ScoreBreakdown } from '../shared/types';
+import type { AuditCategory, AuditConfig, AuditIssue, DesignSystemData, NodeSnapshot, ScoreBreakdown } from '../shared/types';
 import { DesignSystemResolver } from './resolver';
 import { ALL_RULES } from './rules';
 import type { AuditContext, AuditRule, Check } from './rules/types';
@@ -12,6 +12,8 @@ export interface EvaluationResult {
   unresolvedSources: AssetRef[];
   /** Rule crashes are isolated per node and reported, never swallowed. */
   ruleErrors: { ruleId: string; nodeId: string; message: string }[];
+  /** Scored checks per category (the same checks the score counts), so a category that was checked and fully passed can be shown. */
+  checksByCategory: Partial<Record<AuditCategory, number>>;
 }
 
 export function isRuleEnabled(ruleId: string, disabled: string[]): boolean {
@@ -38,6 +40,7 @@ export function evaluateNodes(
   const auditable = nodes.filter((n) => !ignored.has(n.id));
 
   const scored: ScoredCheck[] = [];
+  const checkedKeys = new Map<AuditCategory, Set<string>>();
   const issues = new Map<string, AuditIssue>();
   const ruleErrors: EvaluationResult['ruleErrors'] = [];
 
@@ -47,7 +50,11 @@ export function evaluateNodes(
     if (f && !isRuleEnabled(ruleId, config.disabledRules)) return;
     const key = `${node.id}|${check.property}`;
     // Review and not-verifiable items are shown but never scored: neither passes nor violations.
-    if (f?.severity !== 'review' && f?.severity !== 'unverifiable') scored.push({ key, severity: f?.severity });
+    if (f?.severity !== 'review' && f?.severity !== 'unverifiable') {
+      scored.push({ key, severity: f?.severity });
+      if (!checkedKeys.has(rule.category)) checkedKeys.set(rule.category, new Set());
+      checkedKeys.get(rule.category)!.add(key);
+    }
     if (!f) return;
     const id = `${ruleId}|${key}`;
     if (issues.has(id)) return; // dedupe identical findings
@@ -94,5 +101,7 @@ export function evaluateNodes(
   const sorted = [...issues.values()].sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || a.nodePath.join('/').localeCompare(b.nodePath.join('/')),
   );
-  return { issues: sorted, compliance: computeCompliance(scored), ruleErrors, unresolvedSources: ctx.resolver.unresolved };
+  const checksByCategory: Partial<Record<AuditCategory, number>> = {};
+  for (const [category, keys] of checkedKeys) checksByCategory[category] = keys.size;
+  return { issues: sorted, compliance: computeCompliance(scored), ruleErrors, unresolvedSources: ctx.resolver.unresolved, checksByCategory };
 }

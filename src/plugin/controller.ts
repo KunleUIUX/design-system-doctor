@@ -6,8 +6,10 @@ import { AuditCancelled, AuditTimedOut, countLayers } from '../figma/snapshot';
 import { checkFreshness, performAudit, type Freshness } from '../figma/audit';
 import { goToNode } from '../figma/navigate';
 import type { AuditPhase, AuditScope, MainToUi, UiToMain } from '../shared/messages';
-import { DEFAULT_AUDIT_CONFIG, type AuditCategory, type AuditConfig, type AuditResult } from '../shared/types';
-import { migrateDesignSystem, toPortable } from '../shared/designSystem';
+import { DEFAULT_SETTINGS, DEFAULT_SPACING_SCALE, DEFAULT_RADIUS_SCALE, type AuditCategory, type AuditResult, type PluginSettings } from '../shared/types';
+import { migrateDesignSystem } from '../shared/designSystem';
+import { isReference, migrateToReference, type DesignSystemReference } from '../shared/reference';
+import { captureCurrentFile } from '../figma/capture';
 import { discover } from './discovery';
 import type { PluginStorage } from './storage';
 
@@ -22,23 +24,55 @@ export interface ControllerDeps {
 }
 
 export function createController({ post, storage }: ControllerDeps) {
-  let config: AuditConfig = DEFAULT_AUDIT_CONFIG;
+  let settings: PluginSettings = DEFAULT_SETTINGS;
+  let library: DesignSystemReference[] = [];
   let running = false;
   let cancelRequested = false;
   const watchedPages = new Set<string>();
   let changeTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** Saved settings → current shape. v1 stored consuming-file collection ids; they become refs. */
-  async function loadSettings(): Promise<AuditConfig> {
-    const raw = await storage.loadConfig();
-    if (!raw) return DEFAULT_AUDIT_CONFIG;
-    const merged = { ...DEFAULT_AUDIT_CONFIG, ...raw } as AuditConfig;
-    if (!merged.designSystem) return merged;
-    const designSystem = await migrateDesignSystem(merged.designSystem, async (id) => {
-      const c = await figma.variables.getVariableCollectionByIdAsync(id);
-      return c && { id: c.id, key: c.key, name: c.name, remote: c.remote };
-    });
-    return { ...merged, designSystem };
+  /** v1 stored consuming-file collection ids; they become refs. */
+  const lookupCollection = async (id: string) => {
+    const c = await figma.variables.getVariableCollectionByIdAsync(id);
+    return c && { id: c.id, key: c.key, name: c.name, remote: c.remote };
+  };
+
+  /**
+   * Saved settings → current shape. Older selection-based settings (v1/v2) become a design system
+   * reference that behaves exactly as before. Nothing is written until the designer saves.
+   */
+  async function loadSettings(): Promise<PluginSettings> {
+    const current = await storage.loadSettings();
+    if (current) return { ...DEFAULT_SETTINGS, ...current };
+    const legacy = await storage.loadLegacyConfig();
+    if (!legacy) return DEFAULT_SETTINGS;
+    const { designSystem: old, ...options } = { ...DEFAULT_SETTINGS, ...legacy };
+    if (!old) return { ...options, designSystem: null };
+    const v2 = await migrateDesignSystem(old as never, lookupCollection);
+    return { ...options, designSystem: migrateToReference(v2) };
+  }
+
+  /** Device list; the older single device copy is migrated into it once. */
+  async function loadLibrary(): Promise<DesignSystemReference[]> {
+    const list = (await storage.loadLibrary()).filter(isReference);
+    if (list.length) return list;
+    const portable = await storage.loadLegacyPortable();
+    return portable ? [migrateToReference(await migrateDesignSystem(portable as never, lookupCollection))] : [];
+  }
+
+  /** Keep the device list in step with the selected design system (same id = same design system). */
+  async function remember(ref: DesignSystemReference) {
+    library = [ref, ...library.filter((r) => r.id !== ref.id)];
+    await storage.saveLibrary(library);
+  }
+
+  async function commit(next: PluginSettings) {
+    settings = next;
+    const savedTo = await storage.saveSettings(settings);
+    if (settings.designSystem) await remember(settings.designSystem);
+    post({ type: 'settings-saved', settings, library, savedTo });
+    // The design system and options are part of the fingerprint: a saved result may no longer apply.
+    await reportFreshness(figma.currentPage);
   }
 
   const selectionState = () => ({ pageName: figma.currentPage.name, selectionCount: figma.currentPage.selection.length });
@@ -50,7 +84,7 @@ export function createController({ post, storage }: ControllerDeps) {
     if (!result) return;
     let state: Freshness;
     try {
-      state = await checkFreshness(result, config, page);
+      state = await checkFreshness(result, settings, page);
     } catch {
       state = 'unverified';
     }
@@ -76,7 +110,7 @@ export function createController({ post, storage }: ControllerDeps) {
 
   async function runAudit(scope: AuditScope, confirmedLarge: boolean) {
     if (running) return;
-    if (!config.designSystem) {
+    if (!settings.designSystem) {
       post({ type: 'audit-error', kind: 'no-design-system', message: 'No design system configured.' });
       return;
     }
@@ -94,12 +128,12 @@ export function createController({ post, storage }: ControllerDeps) {
 
     try {
       progress('counting', 0, 0);
-      const total = countLayers(roots, config.includeHidden);
+      const total = countLayers(roots, settings.includeHidden);
       if (total > LARGE_PAGE_LAYERS && !confirmedLarge) {
         post({ type: 'audit-confirm-large', layerCount: total, scope });
         return;
       }
-      const { result, ruleErrorCount } = await performAudit(roots, config, {
+      const { result, ruleErrorCount } = await performAudit(roots, settings, {
         scope,
         page,
         total,
@@ -128,10 +162,10 @@ export function createController({ post, storage }: ControllerDeps) {
     try {
       switch (msg.type) {
         case 'init': {
-          config = await loadSettings();
+          settings = await loadSettings();
+          library = await loadLibrary();
           const lastAudit = storage.loadLastAudit(figma.currentPage);
-          const portable = await storage.loadPortable();
-          post({ type: 'init-state', config, ...selectionState(), lastAudit, portable });
+          post({ type: 'init-state', settings, library, ...selectionState(), lastAudit });
           if (lastAudit) {
             watch(figma.currentPage);
             await reportFreshness(figma.currentPage);
@@ -153,16 +187,32 @@ export function createController({ post, storage }: ControllerDeps) {
           await reportFreshness(figma.currentPage);
           break;
         case 'get-discovery':
-          post({ type: 'discovery', discovery: await discover(config.designSystem?.name) });
+          post({ type: 'discovery', discovery: await discover(undefined) });
           break;
-        case 'save-config': {
-          config = msg.config;
-          const savedTo = await storage.saveConfig(config);
-          // Offer the library part to other files; never their file-specific ids.
-          if (config.designSystem) await storage.savePortable(toPortable(config.designSystem));
-          post({ type: 'config-saved', config, savedTo });
-          // Settings are part of the fingerprint: a saved result may no longer apply.
-          await reportFreshness(figma.currentPage);
+        case 'save-settings':
+          await commit(msg.settings);
+          break;
+        case 'switch-design-system': {
+          const chosen = library.find((r) => r.id === msg.id);
+          if (!chosen) break;
+          // Replaced as a whole: nothing from the previous design system is carried over.
+          await commit({ ...settings, designSystem: JSON.parse(JSON.stringify(chosen)) });
+          break;
+        }
+        case 'capture-design-system': {
+          try {
+            const scales = settings.designSystem ?? { spacingScale: DEFAULT_SPACING_SCALE, radiusScale: DEFAULT_RADIUS_SCALE };
+            const captured = await captureCurrentFile({ spacingScale: scales.spacingScale, radiusScale: scales.radiusScale });
+            const total = captured.textStyles.length + captured.paintStyles.length + captured.variableCollections.length + captured.components.length;
+            if (!total) {
+              post({ type: 'capture-failed', message: 'This file has no styles, variables or components of its own to capture. Open the design system’s library file and capture it there.' });
+              break;
+            }
+            await commit({ ...settings, designSystem: captured });
+          } catch (e) {
+            console.error('[Design System Doctor] capture failed', e);
+            post({ type: 'capture-failed', message: 'Couldn’t read this file’s styles, variables and components.' });
+          }
           break;
         }
       }
@@ -189,7 +239,7 @@ export function createController({ post, storage }: ControllerDeps) {
     onSelectionChange: () => post({ type: 'selection-changed', ...selectionState() }),
     /** For the real-file checks: let a caller wait on a pending freshness re-check. */
     reportFreshness,
-    setConfig: (next: AuditConfig) => void (config = next),
+    setSettings: (next: PluginSettings) => void (settings = next),
   };
 }
 

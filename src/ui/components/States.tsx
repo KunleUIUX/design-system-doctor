@@ -1,20 +1,20 @@
 import { useEffect } from 'preact/hooks';
 import type { AuditErrorKind, Discovery } from '../../shared/messages';
-import type { DesignSystemConfig } from '../../shared/types';
 import { Footer, Header, plural } from './common';
 
 export function NoDesignSystem({
   discovery,
-  portable,
+  savedCount,
   onMount,
-  onConfigure,
-  onUsePortable,
+  onChoose,
+  onCreateFromPage,
 }: {
   discovery: Discovery | null;
-  portable: DesignSystemConfig | null;
+  /** Design systems saved on this device that can be selected here. */
+  savedCount: number;
   onMount: () => void;
-  onConfigure: () => void;
-  onUsePortable: () => void;
+  onChoose: () => void;
+  onCreateFromPage: () => void;
 }) {
   useEffect(onMount, []);
   const found = discovery && [
@@ -28,25 +28,21 @@ export function NoDesignSystem({
     <div class="screen">
       <Header title="Design System Doctor" />
       <main class="body center-col">
-        <h2 class="title">No design system configured</h2>
+        <h2 class="title">Which design system did you use?</h2>
+        <p class="muted">Doctor checks this page against the design system you choose.</p>
         {!discovery ? (
-          <p class="muted">Looking for styles, variables and components…</p>
+          <p class="muted small">Looking for styles, variables and components…</p>
         ) : found && found.length ? (
-          <p class="muted">
-            We found {found.join(', ')}, but we don’t know which ones make up your official design system.
-          </p>
+          <p class="muted small">This page uses {found.join(', ')}.</p>
         ) : (
-          <p class="muted">We didn’t find any styles, variables or components on this page. You can still set up spacing and radius rules.</p>
-        )}
-        {portable && (
-          <p class="muted small">
-            You set up “{portable.name}” in another file. Its library sources can be reused here; anything made inside that file can’t.
-          </p>
+          <p class="muted small">This page doesn’t use any styles, variables or components yet.</p>
         )}
       </main>
       <Footer>
-        {portable && <button class="btn primary full" onClick={onUsePortable}>Start from “{portable.name}”</button>}
-        <button class={`btn ${portable ? 'secondary' : 'primary'} full`} onClick={onConfigure}>Configure design system</button>
+        <button class="btn primary full" onClick={onChoose}>
+          {savedCount ? `Choose a design system (${savedCount} saved)` : 'Choose or capture a design system'}
+        </button>
+        <button class="btn secondary full" onClick={onCreateFromPage}>Create from this page</button>
       </Footer>
     </div>
   );
